@@ -2,7 +2,16 @@ from manim import *
 import numpy as np
 import math
 
-
+class LazyAnimation:
+    """Wrapper for a function that builds an Animation lazily."""
+    def __init__(self, builder):
+        self.builder = builder
+    def build(self) -> Animation:
+        anim = self.builder()
+        if not isinstance(anim, Animation):
+            raise TypeError(f"Builder returned {type(anim)}, expected Animation.")
+        return anim
+    
 class Cell(VGroup):
     def __init__(self, value, cell_width=2, text_color=WHITE):
         super().__init__()
@@ -47,7 +56,11 @@ class VisualArray(VGroup):
         if not self.scene:
             raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
         for anim in anims:
+            #Checks if it's a builder animation or just plain animation
+            anim = anim.build() if isinstance(anim,LazyAnimation) else anim
+                
             self.scene.play(anim, **kwargs)
+   
             
     def get_cell(self, cell_or_index):
         """Error handling opps"""
@@ -116,26 +129,28 @@ class VisualArray(VGroup):
     
     def swap(self,idx_1:int,idx_2:int,color=YELLOW,runtime=0.5):
         """Swaps two cells in an array"""
-        #TODO:  Make move cell highlight on move
-        cell_1:Cell = self.get_cell(idx_1)
-        cell_2:Cell = self.get_cell(idx_2)
-        pos_1 = cell_1.get_center()
-        pos_2 = cell_2.get_center()
-        
-        cell_1_move = self.move_cell(cell_1, target_pos=pos_2)
-        cell_2_move = self.move_cell(cell_2, target_pos=pos_1)
-        group = AnimationGroup(cell_1_move,cell_2_move,lag_ratio=runtime)
-        finalize:Wait = Wait(0)
-        finish_animation = finalize.finish
-        #https://docs.manim.community/en/stable/reference/manim.animation.composition.Succession.html#manim.animation.composition.Succession.finish
-        def new_finish(): #Monkeypatches the .finish method of the current Wait instance
-            finish_animation()
-            self.cells[idx_2] = cell_1
-            self.cells[idx_1] = cell_2
-        finalize.finish = new_finish
-        
-        #The animation runs first before the array gets mutated
-        return Succession(group,finalize)   
+        def build(): #Builds a reference so play can reconstruct
+            #TODO:  Make move cell highlight on move
+            cell_1:Cell = self.get_cell(idx_1)
+            cell_2:Cell = self.get_cell(idx_2)
+            pos_1 = cell_1.get_center()
+            pos_2 = cell_2.get_center()
+            
+            cell_1_move = self.move_cell(cell_1, target_pos=pos_2)
+            cell_2_move = self.move_cell(cell_2, target_pos=pos_1)
+            group = AnimationGroup(cell_1_move,cell_2_move,lag_ratio=runtime)
+            finalize:Wait = Wait(0)
+            finish_animation = finalize.finish
+            #https://docs.manim.community/en/stable/reference/manim.animation.composition.Succession.html#manim.animation.composition.Succession.finish
+            def new_finish(): #Monkeypatches the .finish method of the current Wait instance
+                finish_animation()
+                self.cells[idx_2] = cell_1
+                self.cells[idx_1] = cell_2
+            finalize.finish = new_finish
+            
+            #The animation runs first before the array gets mutated
+            return Succession(group,finalize) 
+        return LazyAnimation(builder=build)
     
     def animate_creation(self,runtime=0.5):
         #AnimationGroup in here controls cell vs text behaviour
@@ -159,4 +174,6 @@ class VisualArray(VGroup):
                if cell_1.value > cell_2.value:
                 cell_1 = self.cells[j]
                 cell_2 = self.cells[j+1]
+                self.play(self.highlight(j),self.highlight(j+1))
                 self.play(self.swap(j,j+1))
+                self.play(self.unhighlight(j),self.unhighlight(j+1))

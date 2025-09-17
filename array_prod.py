@@ -3,9 +3,10 @@ from Structures.arrays import VisualArray
 from helpers import render_scene
 class ArrayScene(Scene):
     def construct(self):
-        array = VisualArray([1,2,3,4],scene=self,cell_width = 0.5)
+        array = VisualArray([1,2,3,4],scene=self,cell_width = 1)
         self.play(array.animate_creation())
-        # array.play(array.swap(0,2),array.swap(3,2))
+        array.play(array.swap(0,2),array.swap(3,2))
+        self.wait(0.5)
         array.bubble_sort()
         self.wait(1)
 if __name__ == "__main__":
