@@ -1,3 +1,9 @@
 # This file is used internally by FFMPEG.
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/2016333726_1772205558_2358810818.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_4217992463_49851647.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/2016333726_206190881_2358810818.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_456035740_1731990053.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_2777666897_541065037.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_2380204591_3554929276.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_2804085514_2676395969.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_258939854_3267886465.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_3880898943_678422336.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_4217992463_785148410.mp4'
