@@ -3,13 +3,14 @@ import numpy as np
 import math
 
 class LazyAnimation:
-    """Wrapper for a function that builds an Animation lazily."""
+    """Wrapper for a function that builds an Animation lazily.
+    Anything that modifies self.cells will use this\n
+    This is used to allow multiple animations to be passed to play(), since this prevents them from being evaluated
+    """
     def __init__(self, builder):
         self.builder = builder
     def build(self) -> Animation:
         anim = self.builder()
-        if not isinstance(anim, Animation):
-            raise TypeError(f"Builder returned {type(anim)}, expected Animation.")
         return anim
     
 class Cell(VGroup):
@@ -18,7 +19,7 @@ class Cell(VGroup):
 
         self.value = value  # value (used in sorting)
         self.square = Square(side_length=cell_width)
-        
+        self.square.set_fill(color=RED, opacity=0)
         # Create the text inside
         text_scale = 0.45 * cell_width / MathTex("0").height #45% of cell height
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
@@ -30,6 +31,8 @@ class Cell(VGroup):
 class VisualArray(VGroup):
     def __init__(self,data,scene,cell_width=2,text_color=WHITE,**kwargs):
         super().__init__(**kwargs)
+        self.cell_width = cell_width
+        self.text_color = text_color
         self.cells = []
         self.cell_texts = []
         self.scene = scene
@@ -48,6 +51,7 @@ class VisualArray(VGroup):
             self.cells.append(cell)
             self.cell_texts.append(cell_text)
             self.add(cell)
+            self.move_to(ORIGIN) #Moves the center of the array to the origin
             
     def play(self, *anims, **kwargs):
         """Recursive play: handles single or multiple animations
@@ -58,7 +62,9 @@ class VisualArray(VGroup):
         for anim in anims:
             #Checks if it's a builder animation or just plain animation
             anim = anim.build() if isinstance(anim,LazyAnimation) else anim
-                
+            print(anim)
+            if not isinstance(anim,Animation):
+                raise TypeError(f"Unexpected {type(anim)} passed to play()")
             self.scene.play(anim, **kwargs)
    
             
@@ -87,6 +93,59 @@ class VisualArray(VGroup):
             raise TypeError(
                 f"Expected int or Cell object, got {type(cell_or_index).__name__}."
             )        
+    def shift_cell(self,from_idx:int,to_idx:int):
+        """
+        Move the cell at from_idx to to_idx,
+        shifting all cells in between accordingly.
+        """
+        def build():
+            #move_cell components
+            def hop_up( cell:int|Cell, lift=0.5, runtime=0.3):
+                cell = self.get_cell(cell)
+                start = cell.get_center()
+                shift_vec = (cell.get_top() - cell.get_center()) / np.linalg.norm(cell.get_top() - cell.get_center())
+                hop_pos = start + shift_vec * (cell.square.side_length + lift)
+                return ApplyMethod(cell.move_to, hop_pos, run_time=runtime)
+
+            def slide_to(cell:int|Cell, target_pos, runtime=0.5):
+                cell:Cell = self.get_cell(cell)
+                cell_pos = cell.get_center()
+                
+                target_pos = np.array([target_pos[0],cell_pos[1],cell_pos[2]])
+                return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
+
+            def drop_down(cell:int|Cell, target_pos, runtime=0.3):
+                cell = self.get_cell(cell)
+                return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
+            
+            anims = []
+            step = -1 if from_idx > to_idx else 1 #If from_idx is larger than to_idx then shift right else shift left
+            
+            destination = self.cells[to_idx].get_center()
+            key:Cell = self.cells[from_idx]
+            anims.append(hop_up(cell=key))
+            for i in range(from_idx + step,to_idx + step,step):
+                cell:Cell = self.cells[i]
+                prev:Cell = self.cells[i - step]
+                anims.append(slide_to(cell=cell,target_pos=prev.get_center()))
+                
+            anims.append(slide_to(cell=key,target_pos=destination))
+            anims.append(drop_down(cell=key,target_pos=destination))
+            finalize:Wait = Wait(0)
+            finish_animation = finalize.finish
+            def new_finish(): #Monkeypatches the .finish method of the current Wait instance
+                finish_animation()
+                shifted_cell = self.cells.pop(from_idx)
+                self.cells.insert(to_idx,shifted_cell)
+                
+            finalize.finish = new_finish      
+            return Succession(*anims,finalize)
+        return LazyAnimation(builder=build)
+    
+            
+            
+            
+
     def move_cell(self,cell:int|Square,target_pos,lift=0,runtime=1,bezier=False):
         """Moves specified cell to desired position"""
         cell:Cell = self.get_cell(cell)
@@ -95,7 +154,7 @@ class VisualArray(VGroup):
         top_side = cell.get_top() - cell.get_center() 
         right_side = cell.get_right() - cell.get_center()
         bottom_side = cell.get_bottom() - cell.get_center()
-        shift_vec = top_side / np.linalg.norm(top_side)
+        shift_vec = top_side / np.linalg.norm(top_side) #Top vector
         
             
         if bezier:
@@ -120,17 +179,32 @@ class VisualArray(VGroup):
         )
         return cell_shift
         
-    def highlight(self, index:int, color=YELLOW, opacity=0.5):
-        cell:Square = self.get_cell(index)
-        return cell.animate.set_fill(color=color, opacity=opacity)
-    def unhighlight(self, index:int):
-        cell:Square = self.get_cell(index)
-        return cell.animate.set_fill(opacity=0)
+    def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.3):
+        cell: Square = self.get_cell(cell).square
+        return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
+
+    def unhighlight(self, cell:int|Cell, runtime=0.3):
+        cell: Square = self.get_cell(cell).square
+        return ApplyMethod(cell.set_fill, 0, run_time=runtime)
     
+    def append(self,data,runtime=0.5):
+        def build():
+            cell = Cell(data,cell_width=ce)
+            text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
+            cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
+            cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
+            finalize = Wait(0)
+            def new_finish():
+                finalize.finish()
+                self.cells.append(data)
+            finalize.finish = new_finish
+            return 
+        return LazyAnimation(builder=build)
+        
+        
     def swap(self,idx_1:int,idx_2:int,color=YELLOW,runtime=0.5):
         """Swaps two cells in an array"""
         def build(): #Builds a reference so play can reconstruct
-            #TODO:  Make move cell highlight on move
             cell_1:Cell = self.get_cell(idx_1)
             cell_2:Cell = self.get_cell(idx_2)
             pos_1 = cell_1.get_center()
@@ -151,17 +225,19 @@ class VisualArray(VGroup):
             #The animation runs first before the array gets mutated
             return Succession(group,finalize) 
         return LazyAnimation(builder=build)
-    
-    def animate_creation(self,runtime=0.5):
+    def create(self,runtime=0.5):
+       
         #AnimationGroup in here controls cell vs text behaviour
         # cell_objs = [AnimationGroup(Create(cell),Write(text),lag_ratio=lag) for (cell,text) in zip(self.cells,self.cell_texts)]
         runtime = max(0.5,runtime)
         cell_objs = [AnimationGroup(Create(cell),Write(text),lag_ratio=0.5) for (cell,text) in zip(self.cells,self.cell_texts)]
-        return AnimationGroup( #Control cells relative to other cells
+        
+        self.play(AnimationGroup( #Control cells relative to other cells
             *cell_objs,
             lag_ratio=0.1,
             runtime=runtime
-        )
+        ))
+        
         
         
     def bubble_sort(self):
@@ -174,6 +250,25 @@ class VisualArray(VGroup):
                if cell_1.value > cell_2.value:
                 cell_1 = self.cells[j]
                 cell_2 = self.cells[j+1]
-                self.play(self.highlight(j),self.highlight(j+1))
+                self.play(self.highlight(j),self.highlight(j+1),runtime=0.2)
                 self.play(self.swap(j,j+1))
-                self.play(self.unhighlight(j),self.unhighlight(j+1))
+                self.play(self.unhighlight(j),self.unhighlight(j+1),runtime=0.2)
+    def insertion_sort(self):
+        n = len(self.cells)
+        for i in range(n):
+            key:Cell = self.cells[i]
+            self.play(self.highlight(key))
+            j = i - 1
+            
+            while j >= 0 and self.cells[j].value > key.value:
+                j_cell = self.cells[j]
+                self.play(self.highlight(j_cell,color=RED))
+                j-=1
+                self.play(self.unhighlight(j_cell))
+            if j + 1 != i: #Checks if j stopped on a cell next to i, doesn't run if so.
+                self.play(self.shift_cell(from_idx=i, to_idx=j+1))
+                self.play(self.unhighlight(key))
+
+
+
+            
