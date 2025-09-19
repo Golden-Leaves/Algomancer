@@ -31,8 +31,8 @@ class ArrayScene(Scene):
         array = VisualArray([12,4,6,1,6,2,8,5,4],scene=self,cell_width = 1,pos=ORIGIN *2)
         array.create()
         self.wait(0.5)
-        bubble_sort(array=array)
-       
+        array.insert(data=1,index=1)
+        self.wait(0.5)
      
         
 if __name__ == "__main__":

@@ -130,7 +130,7 @@ class VisualArray(VGroup):
             raise TypeError(
                 f"Expected int or Cell object, got {type(cell_or_index).__name__}."
             )        
-    def shift_cell(self,from_idx:int,to_idx:int):
+    def shift_cell(self,from_idx:int,to_idx:int) -> LazyAnimation:
         """
         Move the cell at from_idx to to_idx,
         shifting all cells in between accordingly.
@@ -183,7 +183,7 @@ class VisualArray(VGroup):
             
             
 
-    def move_cell(self,cell:int|Square,target_pos,lift=0,runtime=1,bezier=False):
+    def move_cell(self,cell:int|Square,target_pos,lift=0,runtime=1,bezier=False) -> Succession:
         """Moves specified cell to desired position"""
         cell:Cell = self.get_cell(cell)
             
@@ -216,24 +216,22 @@ class VisualArray(VGroup):
         )
         return cell_shift
         
-    def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.3):
+    def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.3) -> ApplyMethod:
         cell: Square = self.get_cell(cell).square
         return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
 
-    def unhighlight(self, cell:int|Cell, runtime=0.3):
+    def unhighlight(self, cell:int|Cell, runtime=0.3) -> ApplyMethod:
         cell: Square = self.get_cell(cell).square
         return ApplyMethod(cell.set_fill, 0, run_time=runtime)
     
-    def append(self,data,runtime=0.5,recenter=True):
+    def append(self,data,runtime=0.5,recenter=True) -> None:
 
-        cell = Cell(data,cell_width=self.cell_width)
+        cell = Cell(value=data,cell_width=self.cell_width)
         last_cell:Cell = self.cells[-1] if self.cells else cell
         if self.cells:#If an array already exists
             right_side = last_cell.get_right()
             right_vec = right_side / np.linalg.norm(right_side)
-            cell.move_to(last_cell.get_right() + right_vec * (last_cell.cell_width / 2)) #Spawns next to last_cell
-       
-        cell.text = data    
+            cell.move_to(last_cell.get_right() + right_vec * (last_cell.cell_width / 2)) #Spawns next to last_cell   
         
         self.add(cell)
         self.cells.append(cell)
@@ -243,7 +241,7 @@ class VisualArray(VGroup):
         if recenter: 
             self.move_to(self.pos)
             
-    def pop(self,index:int|Cell,runtime=0.5):
+    def pop(self,index:int|Cell,runtime=0.5) -> any:
         
         def slide_to(cell:int|Cell, target_pos, runtime=0.5):
                 cell:Cell = self.get_cell(cell)
@@ -265,8 +263,12 @@ class VisualArray(VGroup):
         self.cells.pop(index)
         self.length = len(self.cells)
         return popped_cell.value
+    
+    def insert(self,data,index:int|Cell,runtime=0.5) -> None:
 
-
+        self.append(data)
+        self.play(self.shift_cell(from_idx=len(self.cells) - 1,to_idx=index))
+        
         
         
     def swap(self,idx_1:int,idx_2:int,color=YELLOW,runtime=0.5):
@@ -292,18 +294,7 @@ class VisualArray(VGroup):
             #The animation runs first before the array gets mutated
             return Succession(group,finalize) 
         return LazyAnimation(builder=build)
-    # def create(self,runtime=0.5):
-    #     cell_texts = [cell.text for cell in self.cells]
-    #     if self.cells:
-    #         #AnimationGroup in here controls cell vs text behaviour
-    #         runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
-    #         cell_objs = [AnimationGroup(Create(cell),Write(text),lag_ratio=0.5) for (cell,text) in zip(self.cells,cell_texts)]
-            
-    #         self.play(AnimationGroup( #Control cells relative to other cells
-    #             *cell_objs,
-    #             lag_ratio=0.1,
-    #             runtime=runtime
-    #         ))
+
     def create(self,runtime=0.5):
         if self.cells:
             #AnimationGroup in here controls cell vs text behaviour
@@ -316,7 +307,6 @@ class VisualArray(VGroup):
                 runtime=runtime
             ))
     def create_cells(self,cells:list[Cell],runtime=0.5):
-       
         runtime = max(0.5,runtime)
         cell_objs = [AnimationGroup(Create(cell.square),Write(cell.text),lag_ratio=runtime) for cell in cells]
         
