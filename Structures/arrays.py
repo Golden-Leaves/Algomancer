@@ -16,7 +16,7 @@ class LazyAnimation:
 class Cell(VGroup):
     def __init__(self, value, cell_width=2, text_color=WHITE):
         super().__init__()
-
+        self.cell_width = cell_width
         self.value = value  # value (used in sorting)
         self.square = Square(side_length=cell_width)
         self.square.set_fill(color=RED, opacity=0)
@@ -30,28 +30,65 @@ class Cell(VGroup):
     
 class VisualArray(VGroup):
     def __init__(self,data,scene,cell_width=2,text_color=WHITE,**kwargs):
+        """
+        Initialize a VisualArray, a visual representation of an array using `Cell` objects.
+
+        Parameters
+        ----------
+        data : list
+            The initial values to populate the array with.
+        scene : Scene
+            The active Manim Scene the array belongs to(pass self here)
+        cell_width : float, optional
+            The side length of each square `Cell`
+        text_color : Color, optional
+            The color of the text inside each cell
+        **kwargs :
+            Additional positioning arguments.
+            
+            - pos : np.ndarray, optional  
+              A 3D vector specifying where to center the array in the scene.  
+              Example: `pos=RIGHT*3+UP*2`
+            - x, y, z : float, optional  
+              Coordinates for the array’s center if `pos` is not provided.  
+              Defaults to ORIGIN on each axis.
+        """
+        
+        self.pos = kwargs.pop("pos",None) #Center of the array
+        if self.pos is None:
+            x = kwargs.get("x",ORIGIN[0])
+            y = kwargs.get("y",ORIGIN[1])
+            z = kwargs.get("z",ORIGIN[2])
+            self.pos = np.array([x,y,z])
+        else:
+            self.pos = np.array(self.pos)
+            
         super().__init__(**kwargs)
         self.cell_width = cell_width
         self.text_color = text_color
-        self.cells = []
-        self.cell_texts = []
-        self.scene = scene
-        for idx,text in enumerate(data):
-            cell = Cell(value=text,cell_width=cell_width,text_color=text_color)
-            if idx == 0:
-                cell.move_to(ORIGIN)
-            else:
-                cell.next_to(self.cells[idx - 1],RIGHT,buff=0)
-                
-            text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
-            cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
-
-            cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
+        self.cells:list[Cell] = []
+        self.length = 0
             
-            self.cells.append(cell)
-            self.cell_texts.append(cell_text)
-            self.add(cell)
-            self.move_to(ORIGIN) #Moves the center of the array to the origin
+        self.scene = scene
+        if data:
+            for idx,text in enumerate(data):
+                # text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
+                # cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
+                # cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
+                
+                cell = Cell(value=text,cell_width=cell_width,text_color=text_color)
+                if idx == 0:
+                    cell.move_to(ORIGIN)
+                else:
+                    cell.next_to(self.cells[idx - 1],RIGHT,buff=0)
+                    
+                
+                
+                self.cells.append(cell)
+
+                self.add(cell)
+                self.move_to(self.pos) #Moves the center of the array to the origin
+        self.length = len(self.cells)
             
     def play(self, *anims, **kwargs):
         """Recursive play: handles single or multiple animations
@@ -187,19 +224,49 @@ class VisualArray(VGroup):
         cell: Square = self.get_cell(cell).square
         return ApplyMethod(cell.set_fill, 0, run_time=runtime)
     
-    def append(self,data,runtime=0.5):
-        def build():
-            cell = Cell(data,cell_width=ce)
-            text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
-            cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
-            cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
-            finalize = Wait(0)
-            def new_finish():
-                finalize.finish()
-                self.cells.append(data)
-            finalize.finish = new_finish
-            return 
-        return LazyAnimation(builder=build)
+    def append(self,data,runtime=0.5,recenter=True):
+
+        cell = Cell(data,cell_width=self.cell_width)
+        last_cell:Cell = self.cells[-1] if self.cells else cell
+        if self.cells:#If an array already exists
+            right_side = last_cell.get_right()
+            right_vec = right_side / np.linalg.norm(right_side)
+            cell.move_to(last_cell.get_right() + right_vec * (last_cell.cell_width / 2)) #Spawns next to last_cell
+       
+        cell.text = data    
+        
+        self.add(cell)
+        self.cells.append(cell)
+        self.create_cells(cells=[cell])
+        
+        self.length = len(self.cells)
+        if recenter: 
+            self.move_to(self.pos)
+            
+    def pop(self,index:int|Cell,runtime=0.5):
+        
+        def slide_to(cell:int|Cell, target_pos, runtime=0.5):
+                cell:Cell = self.get_cell(cell)
+                cell_pos = cell.get_center()
+                
+                target_pos = np.array([target_pos[0],cell_pos[1],cell_pos[2]])
+                return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
+        
+        popped_cell:Cell = self.get_cell(index)
+        anims = []
+        anims.append(FadeOut(popped_cell))
+        for i in range(index - 1,-1,-1):
+            cell:Cell = self.cells[i]
+            prev:Cell = self.cells[i + 1]
+            anims.append(slide_to(cell=cell,target_pos=prev.get_center()))
+       
+            
+        self.play(*anims,runtime=runtime)    
+        self.cells.pop(index)
+        self.length = len(self.cells)
+        return popped_cell.value
+
+
         
         
     def swap(self,idx_1:int,idx_2:int,color=YELLOW,runtime=0.5):
@@ -225,49 +292,42 @@ class VisualArray(VGroup):
             #The animation runs first before the array gets mutated
             return Succession(group,finalize) 
         return LazyAnimation(builder=build)
+    # def create(self,runtime=0.5):
+    #     cell_texts = [cell.text for cell in self.cells]
+    #     if self.cells:
+    #         #AnimationGroup in here controls cell vs text behaviour
+    #         runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
+    #         cell_objs = [AnimationGroup(Create(cell),Write(text),lag_ratio=0.5) for (cell,text) in zip(self.cells,cell_texts)]
+            
+    #         self.play(AnimationGroup( #Control cells relative to other cells
+    #             *cell_objs,
+    #             lag_ratio=0.1,
+    #             runtime=runtime
+    #         ))
     def create(self,runtime=0.5):
+        if self.cells:
+            #AnimationGroup in here controls cell vs text behaviour
+            runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
+            cell_objs = [AnimationGroup(Create(cell.square),Write(cell.text),lag_ratio=runtime) for cell in self.cells]
+            
+            self.play(AnimationGroup( #Control cells relative to other cells
+                *cell_objs,
+                lag_ratio=0.1,
+                runtime=runtime
+            ))
+    def create_cells(self,cells:list[Cell],runtime=0.5):
        
-        #AnimationGroup in here controls cell vs text behaviour
-        # cell_objs = [AnimationGroup(Create(cell),Write(text),lag_ratio=lag) for (cell,text) in zip(self.cells,self.cell_texts)]
         runtime = max(0.5,runtime)
-        cell_objs = [AnimationGroup(Create(cell),Write(text),lag_ratio=0.5) for (cell,text) in zip(self.cells,self.cell_texts)]
+        cell_objs = [AnimationGroup(Create(cell.square),Write(cell.text),lag_ratio=runtime) for cell in cells]
         
-        self.play(AnimationGroup( #Control cells relative to other cells
+        self.play(AnimationGroup( 
             *cell_objs,
             lag_ratio=0.1,
             runtime=runtime
         ))
         
         
-        
-    def bubble_sort(self):
-       """Sorts the array and animate using bubble sort"""
-       n = len(self.cells)
-       for i in range(n):
-           for j in range(n - i - 1):
-               cell_1:Cell = self.cells[j]
-               cell_2:Cell = self.cells[j+1]
-               if cell_1.value > cell_2.value:
-                cell_1 = self.cells[j]
-                cell_2 = self.cells[j+1]
-                self.play(self.highlight(j),self.highlight(j+1),runtime=0.2)
-                self.play(self.swap(j,j+1))
-                self.play(self.unhighlight(j),self.unhighlight(j+1),runtime=0.2)
-    def insertion_sort(self):
-        n = len(self.cells)
-        for i in range(n):
-            key:Cell = self.cells[i]
-            self.play(self.highlight(key))
-            j = i - 1
-            
-            while j >= 0 and self.cells[j].value > key.value:
-                j_cell = self.cells[j]
-                self.play(self.highlight(j_cell,color=RED))
-                j-=1
-                self.play(self.unhighlight(j_cell))
-            if j + 1 != i: #Checks if j stopped on a cell next to i, doesn't run if so.
-                self.play(self.shift_cell(from_idx=i, to_idx=j+1))
-                self.play(self.unhighlight(key))
+    
 
 
 

@@ -1,7 +1,12 @@
 from manim import *
 from Structures.arrays import VisualArray
+from Algorithms.sorting import bubble_sort,insertion_sort
 from helpers import render_scene
+import numpy as np
+import random
 class ArrayScene(Scene):
+    def generate_board(self,array:np.ndarray):
+        pass
     def bubble_sort(self,array: VisualArray):
         """Sorts the array and animates using bubble sort.
         Expects a VisualArray instance with a bound scene.
@@ -23,11 +28,12 @@ class ArrayScene(Scene):
                     array.play(array.unhighlight(j), array.unhighlight(j + 1), runtime=0.2)
                     
     def construct(self):
-        array = VisualArray([6,4,2,9,2,5,8,5],scene=self,cell_width = 1)
+        array = VisualArray([12,4,6,1,6,2,8,5,4],scene=self,cell_width = 1,pos=ORIGIN *2)
         array.create()
         self.wait(0.5)
-        array.play()
-        array.insertion_sort()
-        self.wait(1)
+        bubble_sort(array=array)
+       
+     
+        
 if __name__ == "__main__":
     render_scene(ArrayScene,file=__file__,quality="medium")
