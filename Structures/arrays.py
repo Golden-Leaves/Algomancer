@@ -1,25 +1,24 @@
 from manim import *
 import numpy as np
 import math
+from utils import LazyAnimation
+from Structures.base import VisualStructure
 BRIGHT_GREEN = "#00FF00"
-class LazyAnimation:
-    """Wrapper for a function that builds an Animation lazily.
-    Anything that modifies self.cells will use this\n
-    This is used to allow multiple animations to be passed to play(), since this prevents them from being evaluated
-    """
-    def __init__(self, builder):
-        self.builder = builder
-    def build(self) -> Animation:
-        anim = self.builder()
-        return anim
+
     
 class Cell(VGroup):
-    def __init__(self, value, cell_width=2, cell_height=2, text_color=WHITE):
+    def __init__(self, value, cell_width=2, cell_height=2, text_color=WHITE,**kwargs):
         super().__init__()
+        self.rounded = kwargs.get("rounded",False)
+        if self.rounded:
+            corner_radius = 0.5
+        else:
+            corner_radius = 0
+        
         self.cell_width = cell_width
         self.cell_height = cell_height
         self.value = value  # value (used in sorting)
-        self.rectangle = Rectangle(width=cell_width,height=cell_height)
+        self.rectangle = RoundedRectangle(width=cell_width,height=cell_height,corner_radius=corner_radius)
         self.rectangle.set_fill(color=RED, opacity=0)
         # Create the text inside
         text_scale = 0.45 * cell_width / MathTex("0").height #45% of cell height
@@ -29,7 +28,7 @@ class Cell(VGroup):
         
         self.add(self.rectangle, self.text)
     
-class VisualArray(VGroup):
+class VisualArray(VisualStructure):
     def __init__(self,data,scene,cell_width=2,cell_height=2,text_color=WHITE,**kwargs):
         """
         Initialize a VisualArray, a visual representation of an array using `Cell` objects.
@@ -70,7 +69,7 @@ class VisualArray(VGroup):
                 z = z if z is not None else ORIGIN[2]
                 self.pos = np.array([x,y,z])
             
-        super().__init__(**kwargs)
+        super().__init__(scene,**kwargs)
         self.cell_width = cell_width
         self.cell_height = cell_height
         self.text_color = text_color
@@ -84,7 +83,7 @@ class VisualArray(VGroup):
                 # cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
                 # cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
                 
-                cell = Cell(value=text,cell_width=cell_width,text_color=text_color)
+                cell = Cell(value=text,cell_width=cell_width,text_color=text_color,kwargs=kwargs)
                 if idx == 0:
                     cell.move_to(ORIGIN)
                 else:
@@ -98,21 +97,7 @@ class VisualArray(VGroup):
                 self.move_to(self.pos) #Moves the center of the array to the origin
         self.length = len(self.cells)
             
-    def play(self, *anims, **kwargs):
-        """Recursive play: handles single or multiple animations
-        Can accept either an array or multiple animations
-        """
-        if not self.scene:
-            raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
-        for anim in anims:
-            #Checks if it's a builder animation or just plain animation
-            anim = anim.build() if isinstance(anim,LazyAnimation) else anim
-            print(anim)
-            if not isinstance(anim,Animation):
-                raise TypeError(f"Unexpected {type(anim)} passed to play()")
-            self.scene.play(anim, **kwargs)
    
-            
     def get_cell(self, cell_or_index:Cell|int):
         """Error handling opps"""
     # Case 1: int → lookup in self.cells
