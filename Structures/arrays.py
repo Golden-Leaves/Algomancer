@@ -7,7 +7,7 @@ BRIGHT_GREEN = "#00FF00"
 
     
 class Cell(VGroup):
-    def __init__(self, value, cell_width=2, cell_height=2, text_color=WHITE,**kwargs):
+    def __init__(self, value:any, cell_width:int=2, cell_height:int=2, text_color:ManimColor=WHITE,**kwargs):
         super().__init__()
         self.rounded = kwargs.get("rounded",False)
         if self.rounded:
@@ -29,7 +29,7 @@ class Cell(VGroup):
         self.add(self.rectangle, self.text)
     
 class VisualArray(VisualStructure):
-    def __init__(self,data,scene,cell_width=2,cell_height=2,text_color=WHITE,**kwargs):
+    def __init__(self,data:any,scene:Scene,cell_width:int=2,cell_height:int=2,text_color:ManimColor=WHITE,**kwargs):
         """
         Initialize a VisualArray, a visual representation of an array using `Cell` objects.
 
@@ -75,8 +75,7 @@ class VisualArray(VisualStructure):
         self.text_color = text_color
         self.cells:list[Cell] = []
         self.length = 0
-            
-        self.scene = scene
+
         if data:
             for idx,text in enumerate(data):
                 # text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
