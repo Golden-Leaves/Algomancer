@@ -1,6 +1,7 @@
 from manim import *
 from Structures.arrays import VisualArray
 from Algorithms.sorting import bubble_sort,insertion_sort
+from Algorithms.searching import linear_search
 from helpers import render_scene
 import numpy as np
 import random
@@ -28,11 +29,14 @@ class ArrayScene(Scene):
                     array.play(array.unhighlight(j), array.unhighlight(j + 1), runtime=0.2)
                     
     def construct(self):
-        array = VisualArray([12,4,6,1,6,2,8,5,4],scene=self,cell_width = 1,pos=ORIGIN *2)
+        array = VisualArray(["a","b","c"],scene=self,cell_width = 1)
         array.create()
+        cell = linear_search(array=array,target="c")
+        array.play(array.shift_cell(from_idx=array.index(cell),to_idx=0))
         self.wait(0.5)
-        array.insert(data=1,index=1)
+        array.play(array.outline(cell),array.unoutline(cell))
         self.wait(0.5)
+        
      
         
 if __name__ == "__main__":

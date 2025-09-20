@@ -1,7 +1,7 @@
 from manim import *
 import numpy as np
 import math
-
+BRIGHT_GREEN = "#00FF00"
 class LazyAnimation:
     """Wrapper for a function that builds an Animation lazily.
     Anything that modifies self.cells will use this\n
@@ -14,22 +14,23 @@ class LazyAnimation:
         return anim
     
 class Cell(VGroup):
-    def __init__(self, value, cell_width=2, text_color=WHITE):
+    def __init__(self, value, cell_width=2, cell_height=2, text_color=WHITE):
         super().__init__()
         self.cell_width = cell_width
+        self.cell_height = cell_height
         self.value = value  # value (used in sorting)
-        self.square = Square(side_length=cell_width)
-        self.square.set_fill(color=RED, opacity=0)
+        self.rectangle = Rectangle(width=cell_width,height=cell_height)
+        self.rectangle.set_fill(color=RED, opacity=0)
         # Create the text inside
         text_scale = 0.45 * cell_width / MathTex("0").height #45% of cell height
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
-        self.text.move_to(self.square.get_center())
-        self.text.add_updater(lambda m: m.move_to(self.square.get_center()))
+        self.text.move_to(self.rectangle.get_center())
+        self.text.add_updater(lambda m: m.move_to(self.rectangle.get_center()))
         
-        self.add(self.square, self.text)
+        self.add(self.rectangle, self.text)
     
 class VisualArray(VGroup):
-    def __init__(self,data,scene,cell_width=2,text_color=WHITE,**kwargs):
+    def __init__(self,data,scene,cell_width=2,cell_height=2,text_color=WHITE,**kwargs):
         """
         Initialize a VisualArray, a visual representation of an array using `Cell` objects.
 
@@ -55,16 +56,23 @@ class VisualArray(VGroup):
         """
         
         self.pos = kwargs.pop("pos",None) #Center of the array
-        if self.pos is None:
-            x = kwargs.get("x",ORIGIN[0])
-            y = kwargs.get("y",ORIGIN[1])
-            z = kwargs.get("z",ORIGIN[2])
-            self.pos = np.array([x,y,z])
-        else:
+        if self.pos is not None:
             self.pos = np.array(self.pos)
+        
+        else:
+            x = kwargs.get("x",None)
+            y = kwargs.get("y",None)
+            z = kwargs.get("z",None)
+            if x is None and y is None and z is None:
+                self.pos = ORIGIN
+                x = x if x is not None else ORIGIN[0]
+                y = y if y is not None else ORIGIN[1]
+                z = z if z is not None else ORIGIN[2]
+                self.pos = np.array([x,y,z])
             
         super().__init__(**kwargs)
         self.cell_width = cell_width
+        self.cell_height = cell_height
         self.text_color = text_color
         self.cells:list[Cell] = []
         self.length = 0
@@ -105,7 +113,7 @@ class VisualArray(VGroup):
             self.scene.play(anim, **kwargs)
    
             
-    def get_cell(self, cell_or_index):
+    def get_cell(self, cell_or_index:Cell|int):
         """Error handling opps"""
     # Case 1: int → lookup in self.cells
         if isinstance(cell_or_index, int):
@@ -117,7 +125,7 @@ class VisualArray(VGroup):
                     f"Valid range is 0 to {len(self.cells) - 1}."
                 )
 
-        # Case 2: already a Square 
+        # Case 2: already a Cell 
         elif isinstance(cell_or_index, Cell):
             if cell_or_index not in self.cells:
                 raise ValueError(
@@ -130,6 +138,23 @@ class VisualArray(VGroup):
             raise TypeError(
                 f"Expected int or Cell object, got {type(cell_or_index).__name__}."
             )        
+    def index(self, idx:Cell) -> int:
+        if isinstance(idx, int):
+            #Why would you wanna pass an index in here???
+            if 0 <= idx < len(self.cells):
+                return idx
+            else:
+                raise IndexError(f"Index {idx} out of bounds for array of size {len(self.cells)}.")
+            
+        elif isinstance(idx, Cell):
+            try:
+                return self.cells.index(idx)
+            except ValueError:
+                raise ValueError("Cell does not belong to this VisualArray.")
+        else:
+            raise TypeError(f"Expected int or Cell, got {type(idx).__name__}")
+          
+            
     def shift_cell(self,from_idx:int,to_idx:int) -> LazyAnimation:
         """
         Move the cell at from_idx to to_idx,
@@ -141,7 +166,7 @@ class VisualArray(VGroup):
                 cell = self.get_cell(cell)
                 start = cell.get_center()
                 shift_vec = (cell.get_top() - cell.get_center()) / np.linalg.norm(cell.get_top() - cell.get_center())
-                hop_pos = start + shift_vec * (cell.square.side_length + lift)
+                hop_pos = start + shift_vec * (cell.rectangle.height + lift)
                 return ApplyMethod(cell.move_to, hop_pos, run_time=runtime)
 
             def slide_to(cell:int|Cell, target_pos, runtime=0.5):
@@ -158,8 +183,8 @@ class VisualArray(VGroup):
             anims = []
             step = -1 if from_idx > to_idx else 1 #If from_idx is larger than to_idx then shift right else shift left
             
-            destination = self.cells[to_idx].get_center()
-            key:Cell = self.cells[from_idx]
+            destination = self.get_cell(to_idx).get_center()
+            key:Cell = self.get_cell(from_idx)
             anims.append(hop_up(cell=key))
             for i in range(from_idx + step,to_idx + step,step):
                 cell:Cell = self.cells[i]
@@ -183,7 +208,7 @@ class VisualArray(VGroup):
             
             
 
-    def move_cell(self,cell:int|Square,target_pos,lift=0,runtime=1,bezier=False) -> Succession:
+    def move_cell(self,cell:int|Cell,target_pos,lift=0,runtime=1,bezier=False) -> Succession:
         """Moves specified cell to desired position"""
         cell:Cell = self.get_cell(cell)
             
@@ -201,7 +226,7 @@ class VisualArray(VGroup):
             return MoveAlongPath(cell,arc_path,runtime=runtime)
         
 
-        hop_pos = start + shift_vec * (cell.square.side_length + lift) #Makes it go up by side_length
+        hop_pos = start + shift_vec * (cell.rectangle.side_length + lift) #Makes it go up by side_length
         #Post-hop
         x_shift = np.array([target_pos[0],hop_pos[1],0])
         y_shift = target_pos
@@ -216,13 +241,21 @@ class VisualArray(VGroup):
         )
         return cell_shift
         
-    def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.3) -> ApplyMethod:
-        cell: Square = self.get_cell(cell).square
+    def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
+        cell: Rectangle = self.get_cell(cell).rectangle
         return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
 
-    def unhighlight(self, cell:int|Cell, runtime=0.3) -> ApplyMethod:
-        cell: Square = self.get_cell(cell).square
+    def unhighlight(self, cell:int|Cell, runtime=0.5) -> ApplyMethod:
+        cell: Rectangle = self.get_cell(cell).rectangle
         return ApplyMethod(cell.set_fill, 0, run_time=runtime)
+    
+    def outline(self, cell:int|Cell, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
+        rectangle = self.get_cell(cell).rectangle
+        return ApplyMethod(rectangle.set_stroke, color, width, 1.0, run_time=runtime)
+
+    def unoutline(self, cell:int|Cell, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
+        rectangle = self.get_cell(cell).rectangle
+        return ApplyMethod(rectangle.set_stroke, color, width, 1.0, run_time=runtime)
     
     def append(self,data,runtime=0.5,recenter=True) -> None:
 
@@ -299,7 +332,7 @@ class VisualArray(VGroup):
         if self.cells:
             #AnimationGroup in here controls cell vs text behaviour
             runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
-            cell_objs = [AnimationGroup(Create(cell.square),Write(cell.text),lag_ratio=runtime) for cell in self.cells]
+            cell_objs = [AnimationGroup(Create(cell.rectangle),Write(cell.text),lag_ratio=runtime) for cell in self.cells]
             
             self.play(AnimationGroup( #Control cells relative to other cells
                 *cell_objs,
@@ -308,7 +341,7 @@ class VisualArray(VGroup):
             ))
     def create_cells(self,cells:list[Cell],runtime=0.5):
         runtime = max(0.5,runtime)
-        cell_objs = [AnimationGroup(Create(cell.square),Write(cell.text),lag_ratio=runtime) for cell in cells]
+        cell_objs = [AnimationGroup(Create(cell.rectangle),Write(cell.text),lag_ratio=runtime) for cell in cells]
         
         self.play(AnimationGroup( 
             *cell_objs,
