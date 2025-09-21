@@ -29,13 +29,9 @@ class ArrayScene(Scene):
                     array.play(array.unhighlight(j), array.unhighlight(j + 1), runtime=0.2)
                     
     def construct(self):
-        array = VisualArray(["a","b","c"],scene=self,cell_width = 1)
-        array.create()
-        cell = linear_search(array=array,target="c")
-        array.play(array.shift_cell(from_idx=array.index(cell),to_idx=0))
-        self.wait(0.5)
-        array.play(array.outline(cell),array.unoutline(cell))
-        self.wait(0.5)
+        array = VisualArray([1,2,5,123,342,5,2,5,2,6,8,3,6,2],scene=self)
+        array.play(array.create())
+        self.wait(1)
         
      
         

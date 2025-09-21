@@ -5,6 +5,7 @@ from Algorithms.searching import linear_search
 from helpers import render_scene
 import numpy as np
 import random
+
 class HashTableScene(Scene):
     pass
 

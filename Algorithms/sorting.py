@@ -36,4 +36,6 @@ def insertion_sort(array:VisualArray):
 
         if j + 1 != i:  # only shift if new position is different
             array.play(array.shift_cell(from_idx=i, to_idx=j + 1))
-            array.play(array.unhighlight(key))
+
+        array.play(array.unhighlight(key))
+        array.play(array.outline(key))

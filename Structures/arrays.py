@@ -7,29 +7,33 @@ BRIGHT_GREEN = "#00FF00"
 
     
 class Cell(VGroup):
-    def __init__(self, value:any, cell_width:int=2, cell_height:int=2, text_color:ManimColor=WHITE,**kwargs):
-        super().__init__()
-        self.rounded = kwargs.get("rounded",False)
+    def __init__(self, value:any, cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,**kwargs):
+        super().__init__(**kwargs)
+        self.rounded = rounded
         if self.rounded:
-            corner_radius = 0.5
+            corner_radius = 0.3
         else:
             corner_radius = 0
         
         self.cell_width = cell_width
         self.cell_height = cell_height
         self.value = value  # value (used in sorting)
-        self.rectangle = RoundedRectangle(width=cell_width,height=cell_height,corner_radius=corner_radius)
-        self.rectangle.set_fill(color=RED, opacity=0)
+        if rounded:
+            self.body = RoundedRectangle(width=cell_width,height=cell_height,corner_radius=corner_radius)
+        else:
+            self.body = Rectangle(width=cell_width,height=cell_height)
+        self.body.set_fill(color=RED, opacity=0)
         # Create the text inside
-        text_scale = 0.45 * cell_width / MathTex("0").height #45% of cell height
+
+        text_scale = 0.45 * cell_height / MathTex("0").height #38% of cell area
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
-        self.text.move_to(self.rectangle.get_center())
-        self.text.add_updater(lambda m: m.move_to(self.rectangle.get_center()))
+        self.text.move_to(self.body.get_center())
+        self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
         
-        self.add(self.rectangle, self.text)
+        self.add(self.body, self.text)
     
 class VisualArray(VisualStructure):
-    def __init__(self,data:any,scene:Scene,cell_width:int=2,cell_height:int=2,text_color:ManimColor=WHITE,**kwargs):
+    def __init__(self,data:any,scene:Scene,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,**kwargs):
         """
         Initialize a VisualArray, a visual representation of an array using `Cell` objects.
 
@@ -53,7 +57,7 @@ class VisualArray(VisualStructure):
               Coordinates for the array’s center if `pos` is not provided.  
               Defaults to ORIGIN on each axis.
         """
-        
+        self.rounded = kwargs.pop("rounded",False)
         self.pos = kwargs.pop("pos",None) #Center of the array
         if self.pos is not None:
             self.pos = np.array(self.pos)
@@ -75,14 +79,14 @@ class VisualArray(VisualStructure):
         self.text_color = text_color
         self.cells:list[Cell] = []
         self.length = 0
-
+          
         if data:
             for idx,text in enumerate(data):
                 # text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
                 # cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
                 # cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
                 
-                cell = Cell(value=text,cell_width=cell_width,text_color=text_color,kwargs=kwargs)
+                cell = Cell(value=text,cell_width=cell_width,cell_height=cell_height,text_color=text_color,rounded=self.rounded)
                 if idx == 0:
                     cell.move_to(ORIGIN)
                 else:
@@ -150,7 +154,7 @@ class VisualArray(VisualStructure):
                 cell = self.get_cell(cell)
                 start = cell.get_center()
                 shift_vec = (cell.get_top() - cell.get_center()) / np.linalg.norm(cell.get_top() - cell.get_center())
-                hop_pos = start + shift_vec * (cell.rectangle.height + lift)
+                hop_pos = start + shift_vec * (cell.body.height + lift)
                 return ApplyMethod(cell.move_to, hop_pos, run_time=runtime)
 
             def slide_to(cell:int|Cell, target_pos, runtime=0.5):
@@ -210,7 +214,7 @@ class VisualArray(VisualStructure):
             return MoveAlongPath(cell,arc_path,runtime=runtime)
         
 
-        hop_pos = start + shift_vec * (cell.rectangle.side_length + lift) #Makes it go up by side_length
+        hop_pos = start + shift_vec * (cell.body.side_length + lift) #Makes it go up by side_length
         #Post-hop
         x_shift = np.array([target_pos[0],hop_pos[1],0])
         y_shift = target_pos
@@ -226,20 +230,20 @@ class VisualArray(VisualStructure):
         return cell_shift
         
     def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        cell: Rectangle = self.get_cell(cell).rectangle
+        cell: Cell = self.get_cell(cell).body
         return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
 
     def unhighlight(self, cell:int|Cell, runtime=0.5) -> ApplyMethod:
-        cell: Rectangle = self.get_cell(cell).rectangle
+        cell: Cell = self.get_cell(cell).body
         return ApplyMethod(cell.set_fill, 0, run_time=runtime)
     
     def outline(self, cell:int|Cell, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
-        rectangle = self.get_cell(cell).rectangle
-        return ApplyMethod(rectangle.set_stroke, color, width, 1.0, run_time=runtime)
+        cell:Rectangle = self.get_cell(cell).body
+        return ApplyMethod(cell.set_stroke, color, width, 1.0, run_time=runtime)
 
     def unoutline(self, cell:int|Cell, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
-        rectangle = self.get_cell(cell).rectangle
-        return ApplyMethod(rectangle.set_stroke, color, width, 1.0, run_time=runtime)
+        cell:Rectangle = self.get_cell(cell).body
+        return ApplyMethod(cell.set_stroke, color, width, 1.0, run_time=runtime)
     
     def append(self,data,runtime=0.5,recenter=True) -> None:
 
@@ -252,7 +256,7 @@ class VisualArray(VisualStructure):
         
         self.add(cell)
         self.cells.append(cell)
-        self.create_cells(cells=[cell])
+        self.create(cells=[cell])
         
         self.length = len(self.cells)
         if recenter: 
@@ -312,26 +316,21 @@ class VisualArray(VisualStructure):
             return Succession(group,finalize) 
         return LazyAnimation(builder=build)
 
-    def create(self,runtime=0.5):
-        if self.cells:
-            #AnimationGroup in here controls cell vs text behaviour
-            runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
-            cell_objs = [AnimationGroup(Create(cell.rectangle),Write(cell.text),lag_ratio=runtime) for cell in self.cells]
-            
-            self.play(AnimationGroup( #Control cells relative to other cells
-                *cell_objs,
-                lag_ratio=0.1,
-                runtime=runtime
-            ))
-    def create_cells(self,cells:list[Cell],runtime=0.5):
-        runtime = max(0.5,runtime)
-        cell_objs = [AnimationGroup(Create(cell.rectangle),Write(cell.text),lag_ratio=runtime) for cell in cells]
+    def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
+        """Creates the Cell object or index passed, defaults to creating the entire array"""
+        if cells is None:
+            cells:list[Cell] = self.cells
+
+        #AnimationGroup in here controls cell vs text behaviour
+        runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
+        cell_objs = [AnimationGroup(Create(cell.body),Write(cell.text),lag_ratio=runtime) for cell in cells]
         
-        self.play(AnimationGroup( 
+        return AnimationGroup( #Control cells relative to other cells
             *cell_objs,
             lag_ratio=0.1,
             runtime=runtime
-        ))
+        )
+
         
         
     
