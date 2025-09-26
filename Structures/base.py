@@ -9,12 +9,15 @@ class VisualStructure(VGroup):
             """Recursive play: handles single or multiple animations\n
             Can accept either an array or multiple animations
             """
+    
+            
             if not self.scene:
                 raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
             for anim in flatten_array(result=[],objs=anims):
                 #Checks if it's a builder animation or just plain animation
-                anim = anim.build() if isinstance(anim,LazyAnimation) else anim
-                print(anim)
-                if not isinstance(anim,Animation):
-                    raise TypeError(f"Unexpected {type(anim)} passed to play()")
-                self.scene.play(anim, **kwargs)
+                if anim:
+                    anim = anim.build() if isinstance(anim,LazyAnimation) else anim
+                    print(anim)
+                    if not isinstance(anim,Animation):
+                        raise TypeError(f"Unexpected {type(anim)} passed to play()")
+                    self.scene.play(anim, **kwargs)

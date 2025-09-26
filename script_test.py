@@ -1,10 +1,5 @@
-def flatten_array(result,objs):
-    if not isinstance(objs,(tuple,list)):
-            result.append(objs)
-            return result
-    for obj in objs:
-        flatten_array(result=result,objs=obj)
-    return result
-
-array = [[1,2,3],[2,3,4]]
-print(flatten_array(result=[],objs=array))
+mid = 10
+for i in range(mid):
+    print("sigma" * i)
+for j in range(mid,-1,-1):
+    print("sigma" * j)

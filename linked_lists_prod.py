@@ -10,6 +10,8 @@ class LinkedListScene(Scene):
     def construct(self):
         ll = VisualLinkedList([1,2,3,4],scene=self)
         ll.play(ll.create())
+        self.wait(0.5)
+        ll.play(ll.append(1))
         self.wait(1)
 if __name__ == "__main__":
     render_scene(LinkedListScene,file=__file__,quality="medium")
