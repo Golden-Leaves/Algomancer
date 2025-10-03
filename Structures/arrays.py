@@ -126,21 +126,22 @@ class VisualArray(VisualStructure):
             raise TypeError(
                 f"Expected int or Cell object, got {type(cell_or_index).__name__}."
             )        
-    def index(self, idx:Cell) -> int:
-        if isinstance(idx, int):
+    def get_index(self, cell:Cell) -> int:
+        """Returns the index of the cell"""
+        if isinstance(cell, int):
             #Why would you wanna pass an index in here???
-            if 0 <= idx < len(self.cells):
-                return idx
+            if 0 <= cell < len(self.cells):
+                return cell
             else:
-                raise IndexError(f"Index {idx} out of bounds for array of size {len(self.cells)}.")
+                raise IndexError(f"Index {cell} out of bounds for array of size {len(self.cells)}.")
             
-        elif isinstance(idx, Cell):
+        elif isinstance(cell, Cell):
             try:
-                return self.cells.index(idx)
+                return self.cells.index(cell)
             except ValueError:
                 raise ValueError("Cell does not belong to this VisualArray.")
         else:
-            raise TypeError(f"Expected int or Cell, got {type(idx).__name__}")
+            raise TypeError(f"Expected int or Cell, got {type(cell).__name__}")
           
             
     def shift_cell(self,from_idx:int,to_idx:int) -> LazyAnimation:

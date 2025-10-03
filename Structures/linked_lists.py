@@ -44,6 +44,7 @@ class VisualLinkedList(VisualStructure):
         self.node_width = node_width
         self.node_height = node_height
         self.text_color = text_color
+        self.length = 0
         
         if data:
             for idx,value in enumerate(data):
@@ -55,7 +56,7 @@ class VisualLinkedList(VisualStructure):
                     
                 else:
                     prev = self.nodes[idx - 1]
-                    node.next_to(prev.get_right(), buff=node_width * 0.8)
+                    node.next_to(prev.get_right(), buff=node_width * 0.7)
                     
                     prev.next = node
                     if self.doubly:
@@ -67,17 +68,20 @@ class VisualLinkedList(VisualStructure):
                 self.add(node)
                 self.move_to(self.pos)
                 self.tail = node
+                self.length += 1
                 
     def connect(self,node:Node) -> AnimationGroup: 
         """Connects the sides of the current node"""
         anims = []
-        if node.next:
+        if node.next and not node.arrow_next:
             node.arrow_next = Arrow(node.get_right(), node.next.get_left(), buff=0.1)
-            anims.append(GrowArrow(node.arrow_next,run_time=0.7))
+            self.add(node.arrow_next)
+            anims.append(Create(node.arrow_next,run_time=0.7))
             
-        if node.prev and self.doubly: #Creates an arrow if doubly can has prev arrow
+        if node.prev and self.doubly and not node.arrow_prev: #Creates an arrow if doubly can has prev arrow
             node.arrow_prev = Arrow(node.get_left(),node.prev.get_right())  
-            anims.append(GrowArrow(node.arrow_prev,run_time=0.7))
+            self.add(node.arrow_prev)
+            anims.append(Create(node.arrow_prev,run_time=0.7))
             
         return AnimationGroup(*anims,lag_ratio=0.2) if anims else None
     
@@ -107,37 +111,54 @@ class VisualLinkedList(VisualStructure):
         
         return AnimationGroup(*anims,lag_ratio=0.1)
         
-    def append(self,data:any) -> AnimationGroup:
+    def append(self,data:any,recenter=True) -> AnimationGroup:
         
         node:Node = Node(value=data,scene=self.scene,width=self.node_width,height=self.node_height)
         
         
         if self.nodes:
-            self.tail.next = node
-            node.next_to(self.tail.get_right(),buff = self.node_width * 0.8)
+            prev = self.tail
+            prev.next = node #Make sure to handle .doubly as well later on
+            node.next_to(self.tail.get_right(),buff = self.node_width * 0.7)
+            arrow_anim = self.connect(prev)
         else:
             self.head = node
             self.tail = node
             node.move_to(self.pos)
             
-        arrow_anims = self.connect(self.tail)
-        node_anims = self.create(nodes=[node])[0] #Takes only node animations
+        # arrow_anims = self.connect(self.tail) #This is needed because .create() only links
+        
         
         self.add(node)
         self.nodes.append(node)
         self.tail = node
-        return [node_anims,arrow_anims] 
+        node_anim = node.body.create()
+        if recenter:
+            self.move_to(self.pos)
+
+        self.length += 1
+        return AnimationGroup(node_anim,arrow_anim,lag_ratio=0.5)
+    
                 
     def create(self,nodes:list[Node] = None ) -> list[AnimationGroup]:
-        """Creates the linked list, links arrows if they exist"""
+        """Creates the linked list, links arrows if they exist
+        Returns a list where the first element is the node animations while the second one is the arrow animations
+        """
         if nodes is None:
             nodes = self.nodes
 
-        node_anims = AnimationGroup(*[node.body.create() for node in nodes], lag_ratio=0.2) #create node
-        arrow_anims = AnimationGroup(*[self.connect(node) for node in nodes if self.connect(node)],lag_ratio=0.1) #connect arrows
-        
-        
-        return [node_anims,arrow_anims] 
+        node_anims = [node.body.create() for node in nodes] #create nodes
+        # arrow_anims = AnimationGroup(*[self.connect(node) for node in nodes if self.connect(node)],lag_ratio=0.1) #connect arrows
+        arrow_anims = []
+        for node in nodes:
+            conn = self.connect(node)
+            if conn:
+                arrow_anims.append(conn)
+                    
+                    
+        print(arrow_anims)
+        # return [node_anims,arrow_anims] 
+        return AnimationGroup(*node_anims, *arrow_anims, lag_ratio=0.2)
      
                     
         

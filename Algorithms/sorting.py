@@ -2,7 +2,7 @@ from Structures.arrays import VisualArray,Cell
 from manim import *
 def bubble_sort(array:VisualArray):
     """Sorts the array with Bubble Sort, animating each step."""
-    n = len(array.cells)
+    n = array.length
     for i in range(n):
         for j in range(n - i - 1):
             cell_1:Cell = array.cells[j]
@@ -22,7 +22,7 @@ def bubble_sort(array:VisualArray):
 
 def insertion_sort(array:VisualArray):
     """Sorts the array with Insertion Sort, animating each step."""
-    n = len(array.cells)
+    n = array.length
     for i in range(n):
         key = array.cells[i]
         array.play(array.highlight(key))
