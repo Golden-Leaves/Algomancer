@@ -2,35 +2,30 @@ from manim import *
 import numpy as np
 import math
 from utils import LazyAnimation
-from Structures.base import VisualStructure
+from Structures.base import VisualStructure,VisualElement
 BRIGHT_GREEN = "#00FF00"
 
     
-class Cell(VGroup):
+class Cell(VisualElement):
     def __init__(self, value:any, cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,**kwargs):
-        super().__init__(**kwargs)
-        self.rounded = rounded
-        if self.rounded:
-            corner_radius = 0.3
-        else:
-            corner_radius = 0
         
-        self.cell_width = cell_width
-        self.cell_height = cell_height
-        self.value = value  # value (used in sorting)
-        if rounded:
-            self.body = RoundedRectangle(width=cell_width,height=cell_height,corner_radius=corner_radius)
-        else:
-            self.body = Rectangle(width=cell_width,height=cell_height)
+        self.rounded = rounded
+        corner_radius = 0.3 if rounded else 0
+        self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
+                Rectangle(width=cell_width, height=cell_height))
         self.body.set_fill(color=RED, opacity=0)
+        
+        super().__init__(self.body,**kwargs)
+        self.value = value  #The value contained within the Cell
+        
         # Create the text inside
 
         text_scale = 0.45 * cell_height / MathTex("0").height #38% of cell area
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
         self.text.move_to(self.body.get_center())
-        self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
         
         self.add(self.body, self.text)
+        self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
     
 class VisualArray(VisualStructure):
     def __init__(self,data:any,scene:Scene,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,**kwargs):
@@ -74,19 +69,19 @@ class VisualArray(VisualStructure):
                 self.pos = np.array([x,y,z])
             
         super().__init__(scene,**kwargs)
-        self.cell_width = cell_width
-        self.cell_height = cell_height
         self.text_color = text_color
         self.cells:list[Cell] = []
         self.length = 0
-          
+        self.cell_width = cell_width
+        self.cell_height = cell_height
         if data:
             for idx,text in enumerate(data):
                 # text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
                 # cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
                 # cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
                 
-                cell = Cell(value=text,cell_width=cell_width,cell_height=cell_height,text_color=text_color,rounded=self.rounded)
+                cell = Cell(value=text,cell_width=self.cell_width,cell_height=self.cell_height,
+                            text_color=text_color,rounded=self.rounded)
                 if idx == 0:
                     cell.move_to(ORIGIN)
                 else:
@@ -153,9 +148,9 @@ class VisualArray(VisualStructure):
             #move_cell components
             def hop_up( cell:int|Cell, lift=0.5, runtime=0.3):
                 cell = self.get_cell(cell)
-                start = cell.get_center()
-                shift_vec = (cell.get_top() - cell.get_center()) / np.linalg.norm(cell.get_top() - cell.get_center())
-                hop_pos = start + shift_vec * (cell.body.height + lift)
+                start = cell.center
+                shift_vec = (cell.top - start) / np.linalg.norm(cell.top - start)
+                hop_pos = start + shift_vec * (cell.body_height + lift)
                 return ApplyMethod(cell.move_to, hop_pos, run_time=runtime)
 
             def slide_to(cell:int|Cell, target_pos, runtime=0.5):
@@ -188,26 +183,33 @@ class VisualArray(VisualStructure):
                 finish_animation()
                 shifted_cell = self.cells.pop(from_idx)
                 self.cells.insert(to_idx,shifted_cell)
-                
+
             finalize.finish = new_finish      
             return Succession(*anims,finalize)
         return LazyAnimation(builder=build)
     
             
-            
+        
             
 
-    def move_cell(self,cell:int|Cell,target_pos,lift=0,runtime=1,bezier=False) -> Succession:
+    def move_cell(self,cell:int|Cell,target_pos,lift=0,runtime=1,direction="up",bezier=False) -> Succession:
         """Moves specified cell to desired position"""
         cell:Cell = self.get_cell(cell)
             
-        start = cell.get_center()
-        top_side = cell.get_top() - cell.get_center() 
-        right_side = cell.get_right() - cell.get_center()
-        bottom_side = cell.get_bottom() - cell.get_center()
-        shift_vec = top_side / np.linalg.norm(top_side) #Top vector
-        
+        start = cell.center
+        if direction == "up":
+            vec = cell.top - cell.center
+        elif direction == "down":
+            vec = cell.bottom - cell.center
+        elif direction == "left":
+            vec = cell.left - cell.center
+        elif direction == "right":
+            vec = cell.right - cell.center
+        else:
+            raise ValueError(f"Invalid direction: {direction}")
             
+        shift_vec = vec / np.linalg.norm(vec)
+        
         if bezier:
             ctrl1 = start + shift_vec * lift
             ctrl2 = target_pos + shift_vec * lift
@@ -215,7 +217,7 @@ class VisualArray(VisualStructure):
             return MoveAlongPath(cell,arc_path,runtime=runtime)
         
 
-        hop_pos = start + shift_vec * (cell.body.side_length + lift) #Makes it go up by side_length
+        hop_pos = start + shift_vec * (cell.body_height + lift) #Makes it go up by height
         #Post-hop
         x_shift = np.array([target_pos[0],hop_pos[1],0])
         y_shift = target_pos
@@ -231,8 +233,44 @@ class VisualArray(VisualStructure):
         return cell_shift
         
     def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        cell: Cell = self.get_cell(cell).body
-        return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
+        cell: Cell = self.get_cell(cell)
+        # anims = []
+        # anims.append(ApplyMethod(cell.body.set_fill, color, opacity, run_time=runtime))
+        # def make_labeled_arrow(start, end, label, buff=0.1):
+        #     arrow = Arrow(start, end, buff=buff, stroke_width=self.cell_width * 0.45)
+            
+        #     # Direction vector
+        #     vec = end - start
+        #     unit = vec / np.linalg.norm(vec)
+        #     perp = np.array([-unit[1], unit[0], 0])  # perpendicular
+            
+        #     # Label positioned near tail
+        #     text_scale = arrow.stroke_width * 0.8
+        #     text = Text(label).move_to(start + perp * (self.cell_height * 0.3)).scale(text_scale)
+            
+        #     return VGroup(arrow, text)
+        # if label:
+        #     if direction == "up":
+        #         vec = cell.get_top() - cell.get_center()
+        #     elif direction == "down":
+        #         vec = cell.get_bottom() - cell.get_center()
+        #     elif direction == "left":
+        #         vec = cell.get_left() - cell.get_center()
+        #     elif direction == "right":
+        #         vec = cell.get_right() - cell.get_center()
+        #     else:
+        #         raise ValueError(f"Invalid direction: {direction}")
+        #     shift_vec = vec / np.linalg.norm(vec)
+            
+        #     arrow_end = cell.get_center() + shift_vec * (self.cell_width * 0.75) 
+        #     arrow_start   = arrow_end + shift_vec * (self.cell_width * 0.75)
+
+            
+        #     cell.label_arrow = make_labeled_arrow(start=arrow_start,end=arrow_end,label=label)
+        #     self.add(cell.label_arrow)
+        #     anims.append(Create(cell.label_arrow))
+            
+        return ApplyMethod(cell.body.set_fill, color, opacity, run_time=runtime)
 
     def unhighlight(self, cell:int|Cell, runtime=0.5) -> ApplyMethod:
         cell: Cell = self.get_cell(cell).body
@@ -251,9 +289,9 @@ class VisualArray(VisualStructure):
         cell = Cell(value=data,cell_width=self.cell_width)
         last_cell:Cell = self.cells[-1] if self.cells else cell
         if self.cells:#If an array already exists
-            right_side = last_cell.get_right()
+            right_side = last_cell.right
             right_vec = right_side / np.linalg.norm(right_side)
-            cell.move_to(last_cell.get_right() + right_vec * (last_cell.cell_width / 2)) #Spawns next to last_cell   
+            cell.move_to(last_cell.right + right_vec * (last_cell.body_width / 2)) #Spawns next to last_cell   
         
         self.add(cell)
         self.cells.append(cell)
@@ -298,8 +336,8 @@ class VisualArray(VisualStructure):
         def build(): #Builds a reference so play can reconstruct
             cell_1:Cell = self.get_cell(idx_1)
             cell_2:Cell = self.get_cell(idx_2)
-            pos_1 = cell_1.get_center()
-            pos_2 = cell_2.get_center()
+            pos_1 = cell_1.center
+            pos_2 = cell_2.center
             
             cell_1_move = self.move_cell(cell_1, target_pos=pos_2)
             cell_2_move = self.move_cell(cell_2, target_pos=pos_1)
