@@ -1,5 +1,6 @@
 from manim import *
 from Structures.arrays import VisualArray
+from Structures.pointer import Pointer
 from Algorithms.sorting import bubble_sort,insertion_sort
 from Algorithms.searching import linear_search
 from helpers import render_scene
@@ -29,9 +30,12 @@ class ArrayScene(Scene):
                     array.play(array.unhighlight(j), array.unhighlight(j + 1), runtime=0.2)
                     
     def construct(self):
-        array = VisualArray([1,2,5,123,342,5,2,5,2,6,8,3,6,2],scene=self)
+        array = VisualArray([1,2,5,123,2],scene=self)
         array.play(array.create())
-        self.wait(1)
+        # array.play(array.create(),array.shift_cell(from_idx=1,to_idx=4))
+        bubble_sort(array)
+        
+        
         
      
         

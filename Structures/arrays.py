@@ -1,8 +1,9 @@
 from manim import *
 import numpy as np
 import math
-from utils import LazyAnimation
+from utils import LazyAnimation,get_offset_position
 from Structures.base import VisualStructure,VisualElement
+
 BRIGHT_GREEN = "#00FF00"
 
     
@@ -22,10 +23,11 @@ class Cell(VisualElement):
 
         text_scale = 0.45 * cell_height / MathTex("0").height #38% of cell area
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
-        self.text.move_to(self.body.get_center())
+        self.text.move_to(self.get_center())
+        self.text.add_updater(lambda m: m.move_to(self.get_center()))
         
         self.add(self.body, self.text)
-        self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
+        
     
 class VisualArray(VisualStructure):
     def __init__(self,data:any,scene:Scene,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,**kwargs):
@@ -96,8 +98,8 @@ class VisualArray(VisualStructure):
         self.length = len(self.cells)
             
    
-    def get_cell(self, cell_or_index:Cell|int):
-        """Error handling opps"""
+    def get_element(self, cell_or_index:Cell|int):
+        """Error handling opps, can also be used to retrieve an element with an index"""
     # Case 1: int → lookup in self.cells
         if isinstance(cell_or_index, int):
             try:
@@ -147,38 +149,39 @@ class VisualArray(VisualStructure):
         def build():
             #move_cell components
             def hop_up( cell:int|Cell, lift=0.5, runtime=0.3):
-                cell = self.get_cell(cell)
+                cell = self.get_element(cell)
                 start = cell.center
                 shift_vec = (cell.top - start) / np.linalg.norm(cell.top - start)
                 hop_pos = start + shift_vec * (cell.body_height + lift)
                 return ApplyMethod(cell.move_to, hop_pos, run_time=runtime)
 
             def slide_to(cell:int|Cell, target_pos, runtime=0.5):
-                cell:Cell = self.get_cell(cell)
-                cell_pos = cell.get_center()
+                cell:Cell = self.get_element(cell)
+                cell_pos = cell.center
                 
                 target_pos = np.array([target_pos[0],cell_pos[1],cell_pos[2]])
                 return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
 
             def drop_down(cell:int|Cell, target_pos, runtime=0.3):
-                cell = self.get_cell(cell)
+                cell = self.get_element(cell)
                 return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
             
             anims = []
             step = -1 if from_idx > to_idx else 1 #If from_idx is larger than to_idx then shift right else shift left
             
-            destination = self.get_cell(to_idx).get_center()
-            key:Cell = self.get_cell(from_idx)
+            destination = self.get_element(to_idx).center
+            key:Cell = self.get_element(from_idx)
             anims.append(hop_up(cell=key))
             for i in range(from_idx + step,to_idx + step,step):
                 cell:Cell = self.cells[i]
                 prev:Cell = self.cells[i - step]
-                anims.append(slide_to(cell=cell,target_pos=prev.get_center()))
+                anims.append(slide_to(cell=cell,target_pos=prev.center))
                 
             anims.append(slide_to(cell=key,target_pos=destination))
             anims.append(drop_down(cell=key,target_pos=destination))
             finalize:Wait = Wait(0)
             finish_animation = finalize.finish
+            #https://docs.manim.community/en/stable/reference/manim.animation.composition.Succession.html#manim.animation.composition.Succession.finish
             def new_finish(): #Monkeypatches the .finish method of the current Wait instance
                 finish_animation()
                 shifted_cell = self.cells.pop(from_idx)
@@ -192,38 +195,27 @@ class VisualArray(VisualStructure):
         
             
 
-    def move_cell(self,cell:int|Cell,target_pos,lift=0,runtime=1,direction="up",bezier=False) -> Succession:
+    def move_cell(self,cell:int|Cell,target_pos,runtime=1,direction="up") -> Succession:
         """Moves specified cell to desired position"""
-        cell:Cell = self.get_cell(cell)
+        cell:Cell = self.get_element(cell)
             
-        start = cell.center
-        if direction == "up":
-            vec = cell.top - cell.center
-        elif direction == "down":
-            vec = cell.bottom - cell.center
-        elif direction == "left":
-            vec = cell.left - cell.center
-        elif direction == "right":
-            vec = cell.right - cell.center
-        else:
-            raise ValueError(f"Invalid direction: {direction}")
-            
-        shift_vec = vec / np.linalg.norm(vec)
         
-        if bezier:
-            ctrl1 = start + shift_vec * lift
-            ctrl2 = target_pos + shift_vec * lift
-            arc_path = CubicBezier(start,ctrl1,ctrl2,target_pos) #The cell lifts then moves in an arc to the desired location
-            return MoveAlongPath(cell,arc_path,runtime=runtime)
+            
+       
+        
+        # if bezier:
+        #     ctrl1 = start + shift_vec * lift
+        #     ctrl2 = target_pos + shift_vec * lift
+        #     arc_path = CubicBezier(start,ctrl1,ctrl2,target_pos) #The cell lifts then moves in an arc to the desired location
+        #     return MoveAlongPath(cell,arc_path,runtime=runtime)
         
 
-        hop_pos = start + shift_vec * (cell.body_height + lift) #Makes it go up by height
+        # hop_pos = start + shift_vec * (cell.body_height + lift) #Makes it go up by height
+        hop_pos = get_offset_position(element=cell,direction="up")
         #Post-hop
-        x_shift = np.array([target_pos[0],hop_pos[1],0])
+        x_shift = np.array([target_pos[0],hop_pos[1],target_pos[2]])
         y_shift = target_pos
-        # cell_shift = (cell.animate.move_to(hop_pos).move_to(x_shift).move_to(y_shift)
-        #               .set_run_time(0.5))
-        #ApplyMethod treats each as a standalone animation, so Sucession works
+        
         cell_shift = Succession(
             ApplyMethod(cell.move_to, hop_pos),
             ApplyMethod(cell.move_to, x_shift),
@@ -231,57 +223,23 @@ class VisualArray(VisualStructure):
             run_time=2
         )
         return cell_shift
+    
+   
         
     def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        cell: Cell = self.get_cell(cell)
-        # anims = []
-        # anims.append(ApplyMethod(cell.body.set_fill, color, opacity, run_time=runtime))
-        # def make_labeled_arrow(start, end, label, buff=0.1):
-        #     arrow = Arrow(start, end, buff=buff, stroke_width=self.cell_width * 0.45)
-            
-        #     # Direction vector
-        #     vec = end - start
-        #     unit = vec / np.linalg.norm(vec)
-        #     perp = np.array([-unit[1], unit[0], 0])  # perpendicular
-            
-        #     # Label positioned near tail
-        #     text_scale = arrow.stroke_width * 0.8
-        #     text = Text(label).move_to(start + perp * (self.cell_height * 0.3)).scale(text_scale)
-            
-        #     return VGroup(arrow, text)
-        # if label:
-        #     if direction == "up":
-        #         vec = cell.get_top() - cell.get_center()
-        #     elif direction == "down":
-        #         vec = cell.get_bottom() - cell.get_center()
-        #     elif direction == "left":
-        #         vec = cell.get_left() - cell.get_center()
-        #     elif direction == "right":
-        #         vec = cell.get_right() - cell.get_center()
-        #     else:
-        #         raise ValueError(f"Invalid direction: {direction}")
-        #     shift_vec = vec / np.linalg.norm(vec)
-            
-        #     arrow_end = cell.get_center() + shift_vec * (self.cell_width * 0.75) 
-        #     arrow_start   = arrow_end + shift_vec * (self.cell_width * 0.75)
-
-            
-        #     cell.label_arrow = make_labeled_arrow(start=arrow_start,end=arrow_end,label=label)
-        #     self.add(cell.label_arrow)
-        #     anims.append(Create(cell.label_arrow))
-            
-        return ApplyMethod(cell.body.set_fill, color, opacity, run_time=runtime)
+        cell: Cell = self.get_element(cell).body  
+        return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
 
     def unhighlight(self, cell:int|Cell, runtime=0.5) -> ApplyMethod:
-        cell: Cell = self.get_cell(cell).body
+        cell: Cell = self.get_element(cell).body
         return ApplyMethod(cell.set_fill, 0, run_time=runtime)
     
     def outline(self, cell:int|Cell, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
-        cell:Rectangle = self.get_cell(cell).body
+        cell:Rectangle = self.get_element(cell).body
         return ApplyMethod(cell.set_stroke, color, width, 1.0, run_time=runtime)
 
     def unoutline(self, cell:int|Cell, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
-        cell:Rectangle = self.get_cell(cell).body
+        cell:Rectangle = self.get_element(cell).body
         return ApplyMethod(cell.set_stroke, color, width, 1.0, run_time=runtime)
     
     def append(self,data,runtime=0.5,recenter=True) -> None:
@@ -304,13 +262,13 @@ class VisualArray(VisualStructure):
     def pop(self,index:int|Cell,runtime=0.5) -> any:
         
         def slide_to(cell:int|Cell, target_pos, runtime=0.5):
-                cell:Cell = self.get_cell(cell)
+                cell:Cell = self.get_element(cell)
                 cell_pos = cell.get_center()
                 
                 target_pos = np.array([target_pos[0],cell_pos[1],cell_pos[2]])
                 return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
         
-        popped_cell:Cell = self.get_cell(index)
+        popped_cell:Cell = self.get_element(index)
         anims = []
         anims.append(FadeOut(popped_cell))
         for i in range(index - 1,-1,-1):
@@ -329,31 +287,29 @@ class VisualArray(VisualStructure):
         self.append(data)
         self.play(self.shift_cell(from_idx=len(self.cells) - 1,to_idx=index))
         
-        
-        
-    def swap(self,idx_1:int,idx_2:int,color=YELLOW,runtime=0.5):
+    
+    def swap(self, idx_1: int, idx_2: int, color=YELLOW, runtime=0.5):
         """Swaps two cells in an array"""
-        def build(): #Builds a reference so play can reconstruct
-            cell_1:Cell = self.get_cell(idx_1)
-            cell_2:Cell = self.get_cell(idx_2)
-            pos_1 = cell_1.center
-            pos_2 = cell_2.center
-            
-            cell_1_move = self.move_cell(cell_1, target_pos=pos_2)
-            cell_2_move = self.move_cell(cell_2, target_pos=pos_1)
-            group = AnimationGroup(cell_1_move,cell_2_move,lag_ratio=runtime)
-            finalize:Wait = Wait(0)
-            finish_animation = finalize.finish
-            #https://docs.manim.community/en/stable/reference/manim.animation.composition.Succession.html#manim.animation.composition.Succession.finish
-            def new_finish(): #Monkeypatches the .finish method of the current Wait instance
-                finish_animation()
-                self.cells[idx_2] = cell_1
-                self.cells[idx_1] = cell_2
-            finalize.finish = new_finish
-            
-            #The animation runs first before the array gets mutated
-            return Succession(group,finalize) 
-        return LazyAnimation(builder=build)
+        # Fetch cells
+        cell_1: Cell = self.get_element(idx_1)
+        cell_2: Cell = self.get_element(idx_2)
+
+        # Get their centers before moving
+        pos_1 = cell_1.center
+        pos_2 = cell_2.center
+
+        # Build simple motion animations
+        move_1 = self.move_cell(cell_1, target_pos=pos_2)
+       
+        move_2 = self.move_cell(cell_2, target_pos=pos_1)
+        self.cells[idx_2] = cell_1
+        self.cells[idx_1] = cell_2
+        # Return simultaneous motion
+        # return AnimationGroup(move_1, move_2, lag_ratio=0.2)
+        return Succession(move_1, move_2, runtime=0.5)
+    
+
+
 
     def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""

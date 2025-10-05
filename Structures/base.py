@@ -21,6 +21,10 @@ class VisualStructure(VGroup):
                     if not isinstance(anim,Animation):
                         raise TypeError(f"Unexpected {type(anim)} passed to play()")
                     self.scene.play(anim, **kwargs)
+    def get_element(self, index: int):
+        """Placeholder. Subclasses should override this."""
+        raise NotImplementedError("Subclasses must implement get_element().")
+    
 class VisualElement(VGroup):
     r"""
     Base class for all visualized data structure elements in Algomancer.

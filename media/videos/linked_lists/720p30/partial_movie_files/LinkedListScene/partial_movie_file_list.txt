@@ -1,4 +1,0 @@
-# This file is used internally by FFMPEG.
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/linked_lists/720p30/partial_movie_files/LinkedListScene/2016333726_3699929150_2358810818.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/linked_lists/720p30/partial_movie_files/LinkedListScene/543634251_4270654952_2064603230.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/linked_lists/720p30/partial_movie_files/LinkedListScene/543634251_4217992463_995784270.mp4'
