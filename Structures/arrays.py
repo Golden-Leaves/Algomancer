@@ -1,36 +1,41 @@
 from manim import *
 import numpy as np
 import math
-from utils import LazyAnimation,get_offset_position
+from Utils.utils import LazyAnimation,get_offset_position
 from Structures.base import VisualStructure,VisualElement
 
 BRIGHT_GREEN = "#00FF00"
 
     
 class Cell(VisualElement):
-    def __init__(self, value:any, cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,**kwargs):
-        
+    def __init__(self, value:any,master:VisualStructure,
+                cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,**kwargs):
+        print("INIT:", master)
         self.rounded = rounded
         corner_radius = 0.3 if rounded else 0
         self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
                 Rectangle(width=cell_width, height=cell_height))
-        self.body.set_fill(color=RED, opacity=0)
-        
-        super().__init__(self.body,**kwargs)
-        self.value = value  #The value contained within the Cell
+        self.body.set_fill(color=BLACK, opacity=0)
+        self.value = value
+        super().__init__(self.body,master,self.value,**kwargs)
+        print("AFTER:", self.master)
         
         # Create the text inside
 
-        text_scale = 0.45 * cell_height / MathTex("0").height #38% of cell area
+        text_scale = 0.4 * cell_height / MathTex("0").height #38% of cell area
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
         self.text.move_to(self.get_center())
         self.text.add_updater(lambda m: m.move_to(self.get_center()))
         
         self.add(self.body, self.text)
+
+        
         
     
 class VisualArray(VisualStructure):
-    def __init__(self,data:any,scene:Scene,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,**kwargs):
+    def __init__(self,data:any,scene:Scene|None=None,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,
+                label:str=None,
+                **kwargs):
         """
         Initialize a VisualArray, a visual representation of an array using `Cell` objects.
 
@@ -70,49 +75,63 @@ class VisualArray(VisualStructure):
                 z = z if z is not None else ORIGIN[2]
                 self.pos = np.array([x,y,z])
             
-        super().__init__(scene,**kwargs)
+        super().__init__(scene,label,**kwargs)
         self.text_color = text_color
-        self.cells:list[Cell] = []
-        self.length = 0
+        self.elements:list[Cell] = []
+        self.label = label
         self.cell_width = cell_width
         self.cell_height = cell_height
         if data:
-            for idx,text in enumerate(data):
-                # text_scale = 0.45 * cell_width / MathTex("0").height    #30% of cell_height
-                # cell_text = MathTex(str(text)).set_color(text_color).move_to(cell.get_center()).scale(text_scale)
-                # cell_text.add_updater(lambda x, c = cell: x.move_to(c.get_center()))
-                
-                cell = Cell(value=text,cell_width=self.cell_width,cell_height=self.cell_height,
-                            text_color=text_color,rounded=self.rounded)
-                if idx == 0:
-                    cell.move_to(ORIGIN)
-                else:
-                    cell.next_to(self.cells[idx - 1],RIGHT,buff=0)
-                    
-                
-                
-                self.cells.append(cell)
 
-                self.add(cell)
-                self.move_to(self.pos) #Moves the center of the array to the origin
-        self.length = len(self.cells)
+        #     for value in data:
+        #         cell = Cell(value=value,master=self,cell_width=self.cell_width,cell_height=self.cell_height,rounded=self.rounded)
+
+        #         self.elements.append(cell)
+            for idx,text in enumerate(data):
+                    
+                    cell = Cell(value=text,master=self,cell_width=self.cell_width,cell_height=self.cell_height,
+                                text_color=text_color,rounded=self.rounded)
+                    if idx == 0:
+                        cell.move_to(self.pos)
+                        cell.master = self
+                    else:
+                        cell.next_to(self.elements[idx - 1],RIGHT,buff=0)
+                        
+                    
+                    # self.add(cell)          
+                    self.elements.append(cell)
+            self.move_to(self.pos)
+
             
+    def __getitem__(self, index):
+        self.log_event(_type="get",indices=[index],comment=f"Accessing index {index}")
+        if self.scene:#Dunders should only execute if a scene is passed(otherwise only log)
+         self.play(self.highlight(index))
+        return self.elements[index]
+    def __setitem__(self, index, value):
+        self.log_event(_type="set",indices=[index],value=value,comment=f"Setting index {index} to value {value}")
+        if self.scene:
+            self.play(self.set_value(index=index,value=value))
+        return 
+    def __len__(self):
+        return len(self.elements)
    
     def get_element(self, cell_or_index:Cell|int):
         """Error handling opps, can also be used to retrieve an element with an index"""
-    # Case 1: int → lookup in self.cells
+    # Case 1: int → lookup in self.elements
         if isinstance(cell_or_index, int):
             try:
-                return self.cells[cell_or_index]
+                return self.elements[cell_or_index]
             except IndexError:
                 raise IndexError(
                     f"Invalid index {cell_or_index}. "
-                    f"Valid range is 0 to {len(self.cells) - 1}."
+                    f"Valid range is 0 to {len(self.elements) - 1}."
                 )
 
         # Case 2: already a Cell 
         elif isinstance(cell_or_index, Cell):
-            if cell_or_index not in self.cells:
+            if not any(c is cell_or_index for c in self.elements): #This is used because 'in' calls __eq__ -> Inf Recursion
+            # if not cell_or_index in self.elements: 
                 raise ValueError(
                     "Cell object does not belong to this VisualArray."
                 )
@@ -127,20 +146,55 @@ class VisualArray(VisualStructure):
         """Returns the index of the cell"""
         if isinstance(cell, int):
             #Why would you wanna pass an index in here???
-            if 0 <= cell < len(self.cells):
+            if 0 <= cell < len(self.elements):
                 return cell
             else:
-                raise IndexError(f"Index {cell} out of bounds for array of size {len(self.cells)}.")
+                raise IndexError(f"Index {cell} out of bounds for array of size {len(self.elements)}.")
             
         elif isinstance(cell, Cell):
             try:
-                return self.cells.index(cell)
+                return self.elements.index(cell)
             except ValueError:
                 raise ValueError("Cell does not belong to this VisualArray.")
         else:
             raise TypeError(f"Expected int or Cell, got {type(cell).__name__}")
           
-            
+    def set_value(self,index:int|Cell,value:any):
+        def build():
+            element_value = value.value if hasattr(value,"value") else value
+            print(element_value)
+            cell:Cell = self.get_element(index)
+            print("Before Transform:", cell, "master:", cell.master)
+            text_scale = 0.45 * self.cell_height / MathTex("0").height
+            new_text = MathTex(str(element_value)).set_color(self.text_color).scale(text_scale)
+            new_text.move_to(cell.get_center())
+            new_text.add_updater(lambda m: m.move_to(cell.get_center()))
+            cell.value = element_value
+            return Transform(cell.text,new_text,run_time=0.5)
+        return LazyAnimation(builder=build)
+    
+    def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True):
+        cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2)
+        color = GREEN if result else RED
+        scale = 1.08 if result else 1.15  # slightly larger pulse for "swap"   
+        
+
+        highlight = AnimationGroup(
+            self.highlight(cell=cell_1,color=color,runtime=0.2),
+            self.highlight(cell=cell_2,color=color,runtime=0.2)
+        )  
+        pulse = AnimationGroup(
+            Indicate(cell_1,scale_factor=scale,color=color),
+            Indicate(cell_2,color=color,scale_factor=scale),
+            lag_ratio=0.1
+        )
+        unhighlight = AnimationGroup(
+            self.unhighlight(cell=cell_1,runtime=0.2),
+            self.unhighlight(cell=cell_2,runtime=0.2)
+        )
+        return Succession(highlight,pulse,Wait(0.1),unhighlight)
+
+               
     def shift_cell(self,from_idx:int,to_idx:int) -> LazyAnimation:
         """
         Move the cell at from_idx to to_idx,
@@ -173,8 +227,8 @@ class VisualArray(VisualStructure):
             key:Cell = self.get_element(from_idx)
             anims.append(hop_up(cell=key))
             for i in range(from_idx + step,to_idx + step,step):
-                cell:Cell = self.cells[i]
-                prev:Cell = self.cells[i - step]
+                cell:Cell = self.elements[i]
+                prev:Cell = self.elements[i - step]
                 anims.append(slide_to(cell=cell,target_pos=prev.center))
                 
             anims.append(slide_to(cell=key,target_pos=destination))
@@ -184,8 +238,8 @@ class VisualArray(VisualStructure):
             #https://docs.manim.community/en/stable/reference/manim.animation.composition.Succession.html#manim.animation.composition.Succession.finish
             def new_finish(): #Monkeypatches the .finish method of the current Wait instance
                 finish_animation()
-                shifted_cell = self.cells.pop(from_idx)
-                self.cells.insert(to_idx,shifted_cell)
+                shifted_cell = self.elements.pop(from_idx)
+                self.elements.insert(to_idx,shifted_cell)
 
             finalize.finish = new_finish      
             return Succession(*anims,finalize)
@@ -211,7 +265,7 @@ class VisualArray(VisualStructure):
         
 
         # hop_pos = start + shift_vec * (cell.body_height + lift) #Makes it go up by height
-        hop_pos = get_offset_position(element=cell,direction="up")
+        hop_pos = get_offset_position(element=cell,direction=UP)
         #Post-hop
         x_shift = np.array([target_pos[0],hop_pos[1],target_pos[2]])
         y_shift = target_pos
@@ -232,7 +286,7 @@ class VisualArray(VisualStructure):
 
     def unhighlight(self, cell:int|Cell, runtime=0.5) -> ApplyMethod:
         cell: Cell = self.get_element(cell).body
-        return ApplyMethod(cell.set_fill, 0, run_time=runtime)
+        return ApplyMethod(cell.set_fill, BLACK,0, run_time=runtime)
     
     def outline(self, cell:int|Cell, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
         cell:Rectangle = self.get_element(cell).body
@@ -244,18 +298,18 @@ class VisualArray(VisualStructure):
     
     def append(self,data,runtime=0.5,recenter=True) -> None:
 
-        cell = Cell(value=data,cell_width=self.cell_width)
-        last_cell:Cell = self.cells[-1] if self.cells else cell
-        if self.cells:#If an array already exists
+        cell = Cell(value=data,master=self,cell_width=self.cell_width)
+        last_cell:Cell = self.elements[-1] if self.elements else cell
+        if self.elements:#If an array already exists
             right_side = last_cell.right
             right_vec = right_side / np.linalg.norm(right_side)
             cell.move_to(last_cell.right + right_vec * (last_cell.body_width / 2)) #Spawns next to last_cell   
         
         self.add(cell)
-        self.cells.append(cell)
+        self.elements.append(cell)
         self.create(cells=[cell])
         
-        self.length = len(self.cells)
+       
         if recenter: 
             self.move_to(self.pos)
             
@@ -271,26 +325,27 @@ class VisualArray(VisualStructure):
         popped_cell:Cell = self.get_element(index)
         anims = []
         anims.append(FadeOut(popped_cell))
-        for i in range(index - 1,-1,-1):
-            cell:Cell = self.cells[i]
-            prev:Cell = self.cells[i + 1]
+        for i in range(index - 1,-1,-1): #Shift cells to the right to fill up the popped cell
+            cell:Cell = self.elements[i]
+            prev:Cell = self.elements[i + 1]
             anims.append(slide_to(cell=cell,target_pos=prev.get_center()))
        
             
         self.play(*anims,runtime=runtime)    
-        self.cells.pop(index)
-        self.length = len(self.cells)
+        self.elements.pop(index)
+        
         return popped_cell.value
     
     def insert(self,data,index:int|Cell,runtime=0.5) -> None:
 
         self.append(data)
-        self.play(self.shift_cell(from_idx=len(self.cells) - 1,to_idx=index))
+        self.play(self.shift_cell(from_idx=len(self.elements) - 1,to_idx=index))
         
     
     def swap(self, idx_1: int, idx_2: int, color=YELLOW, runtime=0.5):
         """Swaps two cells in an array"""
-        # Fetch cells
+    
+    # Fetch cells
         cell_1: Cell = self.get_element(idx_1)
         cell_2: Cell = self.get_element(idx_2)
 
@@ -300,21 +355,23 @@ class VisualArray(VisualStructure):
 
         # Build simple motion animations
         move_1 = self.move_cell(cell_1, target_pos=pos_2)
-       
+    
         move_2 = self.move_cell(cell_2, target_pos=pos_1)
-        self.cells[idx_2] = cell_1
-        self.cells[idx_1] = cell_2
+        self.elements[idx_2] = cell_1
+        self.elements[idx_1] = cell_2
         # Return simultaneous motion
         # return AnimationGroup(move_1, move_2, lag_ratio=0.2)
         return Succession(move_1, move_2, runtime=0.5)
-    
 
+    
 
 
     def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
+        if not self.scene:
+            return None
         if cells is None:
-            cells:list[Cell] = self.cells
+            cells:list[Cell] = self.elements
 
         #AnimationGroup in here controls cell vs text behaviour
         runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
