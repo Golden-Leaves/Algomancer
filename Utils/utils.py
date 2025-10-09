@@ -5,7 +5,7 @@ import numpy as np
 from typing import Any
 if TYPE_CHECKING:
     from Structures.base import VisualElement
-    
+
 class LazyAnimation:
     
     """Wrapper for a function that builds an Animation lazily.
@@ -19,6 +19,23 @@ class LazyAnimation:
         anim = self.builder()
         return anim
     
+def resolve_value(obj):
+    """
+    Resolve an operand (VisualElement or primitive) into its comparable value.
+
+    Supports:
+        - VisualElement → obj.value
+        - int, float, str, bool → obj
+    Raises:
+        TypeError for unsupported operand types.
+    """
+    from Structures.base import VisualElement
+    if isinstance(obj, (VisualElement,Rectangle)):
+        return obj.value
+    elif isinstance(obj, (int, float, str, bool)):
+        return obj
+    else:
+        raise TypeError(f"Unsupported operand type: {type(obj).__name__}")
 def flatten_array(result,objs) -> list:
     """Flattens an iterable"""
     if not isinstance(objs,(tuple,list)):
