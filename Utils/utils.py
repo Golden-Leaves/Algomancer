@@ -14,6 +14,7 @@ class LazyAnimation:
     """
     def __init__(self, builder):
         self.builder = builder
+   
     def build(self) -> Animation:
         anim = self.builder()
         return anim
@@ -87,4 +88,6 @@ class Event:
         self.step_id = step_id
         self.result = result
         self.comment = comment
+    def __repr__(self):
+        return f"<Event type={self._type} target={type(self.target).__name__}>"
         
