@@ -1,4 +1,4 @@
 # This file is used internally by FFMPEG.
 file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/pointer_prod/720p30/partial_movie_files/PointerTest/2016333726_3379546806_2358810818.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/pointer_prod/720p30/partial_movie_files/PointerTest/543634251_263302304_1169743728.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/pointer_prod/720p30/partial_movie_files/PointerTest/543634251_4217992463_3645294749.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/pointer_prod/720p30/partial_movie_files/PointerTest/543634251_1750604067_1169743728.mp4'
+file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/pointer_prod/720p30/partial_movie_files/PointerTest/543634251_4217992463_2627802349.mp4'
