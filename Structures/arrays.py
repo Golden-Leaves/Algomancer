@@ -10,7 +10,7 @@ BRIGHT_GREEN = "#00FF00"
 class Cell(VisualElement):
     def __init__(self, value:any,master:VisualStructure,
                 cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,**kwargs):
-        print("INIT:", master)
+
         self.rounded = rounded
         corner_radius = 0.3 if rounded else 0
         self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
@@ -18,7 +18,7 @@ class Cell(VisualElement):
         self.body.set_fill(color=BLACK, opacity=0)
         self.value = value
         super().__init__(self.body,master,self.value,**kwargs)
-        print("AFTER:", self.master)
+
         
         # Create the text inside
 
@@ -59,34 +59,16 @@ class VisualArray(VisualStructure):
               Coordinates for the array’s center if `pos` is not provided.  
               Defaults to ORIGIN on each axis.
         """
-        self.rounded = kwargs.pop("rounded",False)
-        self.pos = kwargs.pop("pos",None) #Center of the array
-        if self.pos is not None:
-            self.pos = np.array(self.pos)
-        
-        else:
-            x = kwargs.get("x",None)
-            y = kwargs.get("y",None)
-            z = kwargs.get("z",None)
-            if x is None and y is None and z is None:
-                self.pos = ORIGIN
-                x = x if x is not None else ORIGIN[0]
-                y = y if y is not None else ORIGIN[1]
-                z = z if z is not None else ORIGIN[2]
-                self.pos = np.array([x,y,z])
-            
+       
+    
         super().__init__(scene,label,**kwargs)
+        self.rounded = kwargs.pop("rounded",False)
         self.text_color = text_color
-        self.elements:list[Cell] = []
-        self.label = label
+        # self.elements:list[Cell] = []
         self.cell_width = cell_width
         self.cell_height = cell_height
         if data:
 
-        #     for value in data:
-        #         cell = Cell(value=value,master=self,cell_width=self.cell_width,cell_height=self.cell_height,rounded=self.rounded)
-
-        #         self.elements.append(cell)
             for idx,text in enumerate(data):
                     
                     cell = Cell(value=text,master=self,cell_width=self.cell_width,cell_height=self.cell_height,
@@ -108,40 +90,59 @@ class VisualArray(VisualStructure):
         if self.scene:#Dunders should only execute if a scene is passed(otherwise only log)
          self.play(self.highlight(index))
         return self.elements[index]
+    
     def __setitem__(self, index, value):
         self.log_event(_type="set",indices=[index],value=value,comment=f"Setting index {index} to value {value}")
         if self.scene:
             self.play(self.set_value(index=index,value=value))
         return 
+    
     def __len__(self):
         return len(self.elements)
-   
-    def get_element(self, cell_or_index:Cell|int):
-        """Error handling opps, can also be used to retrieve an element with an index"""
-    # Case 1: int → lookup in self.elements
-        if isinstance(cell_or_index, int):
-            try:
-                return self.elements[cell_or_index]
-            except IndexError:
-                raise IndexError(
-                    f"Invalid index {cell_or_index}. "
-                    f"Valid range is 0 to {len(self.elements) - 1}."
-                )
+    
+    def __contains__(self,value):
+        result = False
+        target_val = value.value if hasattr(value, "value") else value
+        for i in range(len(self)):
+            cell:Cell = self.get_element(i)
+            if self.scene: #Highlight cells that are looped through
+                animation = Succession(self.highlight(cell=cell,color=YELLOW,runtime=0.15),
+                                    Wait(0.1),
+                                    self.unhighlight(cell=cell,runtime=0.1),)
+                self.play(animation)
+            if target_val == cell.value:
+                result = True
+                scale =  1.15
+                if self.scene:
+                    self.play(Succession(self.highlight(cell=cell,color=GREEN,runtime=0.2),
+                                        Indicate(cell,color=GREEN,scale_factor=scale),
+                                        Wait(0.1),
+                                        self.unhighlight(cell=cell,runtime=0.2)
+                                        ))
+                break
+        self.log_event(_type="contains",value=value,result=result,comment=f"Find value {value} in array")
+        return result
+    def __iter__(self):
+        self._iter_index = 0
+        return self
 
-        # Case 2: already a Cell 
-        elif isinstance(cell_or_index, Cell):
-            if not any(c is cell_or_index for c in self.elements): #This is used because 'in' calls __eq__ -> Inf Recursion
-            # if not cell_or_index in self.elements: 
-                raise ValueError(
-                    "Cell object does not belong to this VisualArray."
-                )
-            return cell_or_index
+    def __next__(self):
+        if self._iter_index >= len(self):
+            raise StopIteration
 
-        # Case 3: goofy input
-        else:
-            raise TypeError(
-                f"Expected int or Cell object, got {type(cell_or_index).__name__}."
-            )        
+        cell: Cell = self.get_element(self._iter_index)
+
+        if self.scene:
+            # Yellow traversal highlight, same as __contains__
+            scan_anim = Succession(
+                self.highlight(cell=cell, color=YELLOW, runtime=0.15),
+                Wait(0.1),
+                self.unhighlight(cell=cell, runtime=0.1),
+            )
+            self.play(scan_anim)
+
+        self._iter_index += 1
+        return cell
     def get_index(self, cell:Cell) -> int:
         """Returns the index of the cell"""
         if isinstance(cell, int):
@@ -170,6 +171,7 @@ class VisualArray(VisualStructure):
             new_text.move_to(cell.get_center())
             new_text.add_updater(lambda m: m.move_to(cell.get_center()))
             cell.value = element_value
+        
             return Transform(cell.text,new_text,run_time=0.5)
         return LazyAnimation(builder=build)
     
@@ -279,22 +281,6 @@ class VisualArray(VisualStructure):
         return cell_shift
     
    
-        
-    def highlight(self, cell:int|Cell, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        cell: Cell = self.get_element(cell).body  
-        return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
-
-    def unhighlight(self, cell:int|Cell, runtime=0.5) -> ApplyMethod:
-        cell: Cell = self.get_element(cell).body
-        return ApplyMethod(cell.set_fill, BLACK,0, run_time=runtime)
-    
-    def outline(self, cell:int|Cell, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
-        cell:Rectangle = self.get_element(cell).body
-        return ApplyMethod(cell.set_stroke, color, width, 1.0, run_time=runtime)
-
-    def unoutline(self, cell:int|Cell, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
-        cell:Rectangle = self.get_element(cell).body
-        return ApplyMethod(cell.set_stroke, color, width, 1.0, run_time=runtime)
     
     def append(self,data,runtime=0.5,recenter=True) -> None:
 
