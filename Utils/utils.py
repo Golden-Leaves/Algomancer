@@ -30,12 +30,13 @@ def resolve_value(obj):
         TypeError for unsupported operand types.
     """
     from Structures.base import VisualElement
-    if isinstance(obj, (VisualElement,Rectangle)):
+    if isinstance(obj, (VisualElement)):
         return obj.value
     elif isinstance(obj, (int, float, str, bool)):
         return obj
     else:
-        raise TypeError(f"Unsupported operand type: {type(obj).__name__}")
+        # raise TypeError(f"Unsupported operand type: {type(obj).__name__}")
+        return NotImplemented
 def flatten_array(result,objs) -> list:
     """Flattens an iterable"""
     if not isinstance(objs,(tuple,list)):

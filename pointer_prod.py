@@ -6,7 +6,7 @@ from helpers import render_scene
 class PointerTest(Scene):
     def construct(self):
         array = VisualArray([1,2,3,4],scene=self)
-        i = Pointer(0,master=array,scene=self,label="This is a label",direction=UP)
+        i = Pointer(0,master=array,scene=self,label="This is a label",direction=DOWN)
         array.play(array.create(),i.create_arrow())
         # i.play(i.create_arrow())
         # self.wait(1)

@@ -94,17 +94,21 @@ class VisualLinkedList(VisualStructure):
             arrow = node.arrow_next
             anims.append(Uncreate(arrow,runtime=0.7))
             node.arrow_next = None
+            node.next = None
             
         elif direction == "prev" and self.doubly:
             arrow = node.arrow_prev
             anims.append(Uncreate(arrow,runtime=0.7))
             node.arrow_prev = None
+            node.prev = None
             
         elif direction == "both" and self.doubly:
             next_arrow = node.arrow_next
             prev_arrow = node.arrow_prev
             anims.append(Uncreate(next_arrow,runtime=0.7))
             anims.append(Uncreate(prev_arrow,runtime=0.7))
+            node.next = None
+            node.prev = None
             
         else:
             raise ValueError(f"Invalid direction: '{direction}'")

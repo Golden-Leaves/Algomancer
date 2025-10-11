@@ -3,7 +3,8 @@ import numpy as np
 import math
 from Utils.utils import LazyAnimation,get_offset_position
 from Structures.base import VisualStructure,VisualElement
-
+from Structures.pointer import Pointer
+from Utils.runtime import is_animating,AlgoScene
 BRIGHT_GREEN = "#00FF00"
 
     
@@ -17,7 +18,7 @@ class Cell(VisualElement):
                 Rectangle(width=cell_width, height=cell_height))
         self.body.set_fill(color=BLACK, opacity=0)
         self.value = value
-        super().__init__(self.body,master,self.value,**kwargs)
+        super().__init__(body=self.body,master=master,value=self.value,**kwargs)
 
         
         # Create the text inside
@@ -33,7 +34,7 @@ class Cell(VisualElement):
         
     
 class VisualArray(VisualStructure):
-    def __init__(self,data:any,scene:Scene|None=None,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,
+    def __init__(self,data:any,scene:AlgoScene|None=None,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,
                 label:str=None,
                 **kwargs):
         """
@@ -87,13 +88,16 @@ class VisualArray(VisualStructure):
             
     def __getitem__(self, index):
         self.log_event(_type="get",indices=[index],comment=f"Accessing index {index}")
-        if self.scene:#Dunders should only execute if a scene is passed(otherwise only log)
+        if isinstance(index, Pointer):
+            return self.elements[index.index]
+        
+        if self.scene and is_animating() and self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
          self.play(self.highlight(index))
-        return self.elements[index]
+        return self.get_element(index)
     
     def __setitem__(self, index, value):
         self.log_event(_type="set",indices=[index],value=value,comment=f"Setting index {index} to value {value}")
-        if self.scene:
+        if self.scene and is_animating() and not self.scene.in_play:
             self.play(self.set_value(index=index,value=value))
         return 
     
@@ -105,15 +109,15 @@ class VisualArray(VisualStructure):
         target_val = value.value if hasattr(value, "value") else value
         for i in range(len(self)):
             cell:Cell = self.get_element(i)
-            if self.scene: #Highlight cells that are looped through
-                animation = Succession(self.highlight(cell=cell,color=YELLOW,runtime=0.15),
-                                    Wait(0.1),
-                                    self.unhighlight(cell=cell,runtime=0.1),)
-                self.play(animation)
+            if self.scene and is_animating() and not self.scene.in_play: #Highlight cells that are looped through
+                    animation = Succession(self.highlight(cell=cell,color=YELLOW,runtime=0.15),
+                                        Wait(0.1),
+                                        self.unhighlight(cell=cell,runtime=0.1),)
+                    self.play(animation)
             if target_val == cell.value:
                 result = True
                 scale =  1.15
-                if self.scene:
+                if self.scene and is_animating():
                     self.play(Succession(self.highlight(cell=cell,color=GREEN,runtime=0.2),
                                         Indicate(cell,color=GREEN,scale_factor=scale),
                                         Wait(0.1),
@@ -130,19 +134,20 @@ class VisualArray(VisualStructure):
         if self._iter_index >= len(self):
             raise StopIteration
 
-        cell: Cell = self.get_element(self._iter_index)
+        cell: Cell = self.elements[self._iter_index]
 
-        if self.scene:
+        if self.scene and is_animating() and not self.scene.in_play:
             # Yellow traversal highlight, same as __contains__
-            scan_anim = Succession(
+            anim = Succession(
                 self.highlight(cell=cell, color=YELLOW, runtime=0.15),
                 Wait(0.1),
                 self.unhighlight(cell=cell, runtime=0.1),
             )
-            self.play(scan_anim)
+            self.play(anim)
 
         self._iter_index += 1
         return cell
+    
     def get_index(self, cell:Cell) -> int:
         """Returns the index of the cell"""
         if isinstance(cell, int):
@@ -175,7 +180,10 @@ class VisualArray(VisualStructure):
             return Transform(cell.text,new_text,run_time=0.5)
         return LazyAnimation(builder=build)
     
-    def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True):
+    def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True,scalar=False):
+        if scalar:
+            return Wait(0)
+            
         cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2)
         color = GREEN if result else RED
         scale = 1.08 if result else 1.15  # slightly larger pulse for "swap"   

@@ -3,10 +3,11 @@ from Structures.arrays import VisualArray
 from Structures.pointer import Pointer
 from Algorithms.sorting import bubble_sort,insertion_sort
 from Algorithms.searching import linear_search
+from Utils.runtime import AlgoScene
 from helpers import render_scene
 import numpy as np
 import random
-class ArrayScene(Scene):
+class ArrayScene(AlgoScene):
     def generate_board(self,array:np.ndarray):
         pass
     def bubble_sort(self,array: VisualArray):
@@ -30,10 +31,29 @@ class ArrayScene(Scene):
                     array.play(array.unhighlight(j), array.unhighlight(j + 1), runtime=0.2)
                     
     def construct(self):
-        array = VisualArray([1,2,5,123,2],scene=self)
-        array.play(array.create())
-        # array.play(array.create(),array.shift_cell(from_idx=1,to_idx=4))
-        bubble_sort(array)
+
+        with self.animation_context():
+            array = VisualArray([1,2,5,22,4,3],scene=self)
+            array.play(array.create())
+            array[1] += 1
+            i = Pointer(0,master=array,label="i")
+            array.play(i.create())
+            i += 1
+            
+
+        
+        
+        
+       
+        # array.play(array.create(),array.highlight(cell=1),array.set_value(index=1,value=12))
+        # # array.play(array.set_value(index=1,value=12))
+        # array.play(array.swap(1,2))
+        # array.play(array.compare(index_1=1,index_2=3))
+        # text = Text(str(len(array))).to_corner(UR)
+        # self.play(Write(text))
+        
+        
+        self.wait(1)
         
         
         
