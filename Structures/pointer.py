@@ -15,9 +15,6 @@ class Pointer(VisualElement):
     def __hash__(self):
         return id(self)
     
-    def set_index(self,index):
-        """Update pointer's index and animate movement to the new cell."""
-        self.value = index
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
         
@@ -75,13 +72,14 @@ class Pointer(VisualElement):
     def __iadd__(self, other: int):
         if not isinstance(other, int):
             return NotImplemented
-        self.value += other
+        new_index = self.value + other
         print("Before play()")
         
         print("After play()")
         if self.master and self.master.scene and is_animating():
-            anim = self.move_pointer(self.value)   # self.value == current index
+            anim = self.move_pointer(old_index=self.value,index=new_index)   # self.value == current index
             self.master.play(anim)
+        self.value += other
         return self
 
     def __isub__(self, other: int):
@@ -104,10 +102,11 @@ class Pointer(VisualElement):
     def create(self):
         master_element:VisualElement = self.master[self.value]
     
-        arrow_end = get_offset_position(master_element, direction=self.direction, buff=0.05)
+        arrow_end = get_offset_position(master_element, direction=self.direction,buff=0.05)
         arrow_start = get_offset_position(master_element,coordinate=arrow_end, direction=self.direction)
     
         self.body = Arrow(arrow_start, arrow_end, buff=0.1, stroke_width=master_element.body_width * 0.45)
+
         # Label positioned near tail
         text_scale = self.body.stroke_width * 0.8
         self.label = Text(self.label).scale(text_scale)
@@ -117,23 +116,22 @@ class Pointer(VisualElement):
 )
         self.add(self.body,self.label)
 
-
-        
-        self.add(self.body,self.label)
         return AnimationGroup(Create(self.body),Write(self.label),lag_ratio=0.2)
         
-    def move_pointer(self,index:int):
+    def move_pointer(self,old_index:int,index:int):
         # if isinstance(index,Pointer):
         #     index = index.index
         print("Move Pointer:",type(index))
-
+        old_master_element = self.master.get_element(old_index)
         master_element:VisualElement = self.master.get_element(index)
-        arrow_pos = self.body.get_center()
-        if self.direction in (UP,DOWN):#Move to target's x
-            new_pos = np.array([master_element.center[0], arrow_pos[1], 0])
+        old_pos = get_offset_position(old_master_element, direction=self.direction,buff=0.05)
+        new_pos = get_offset_position(master_element, direction=self.direction,buff=0.05)
+        arrow_pos = new_pos - old_pos
+        # if self.direction in (UP,DOWN):#Move to target's x
+        #     new_pos = np.array([master_element.center[0], arrow_pos[1], 0])
         
-        elif self.direction in ("left", "right"): #Move to target's y
-            new_pos = np.array([arrow_pos[0], master_element.center[1], 0])
-        else:
-            raise ValueError(f"Invalid direction: {self.direction}")
-        return ApplyMethod(self.move_to,new_pos)
+        # elif self.direction in ("left", "right"): #Move to target's y
+        #     new_pos = np.array([arrow_pos[0], master_element.center[1], 0])
+        # else:
+        #     raise ValueError(f"Invalid direction: {self.direction}")
+        return ApplyMethod(self.shift,arrow_pos)
