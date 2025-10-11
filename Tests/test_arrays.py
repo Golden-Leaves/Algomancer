@@ -5,10 +5,10 @@ and error handling.  Designed for direct call-and-see execution.
 """
 from manim import *
 from Structures.arrays import VisualArray
-from helpers import render_scene
 
 
-def test_create(array):
+
+def test_create(array:VisualArray):
     """Play the create animation to ensure array spawns properly."""
     array.play(array.create())
     print("✅ test_create completed")
@@ -16,8 +16,10 @@ def test_create(array):
 
 
 
-def test_index_access(array):
+def test_index_access(array:VisualArray):
     """Access elements and trigger highlight animations."""
+    if not array.elements:
+        array.play(array.create())
     _ = array[0]
     _ = array[1]
     _ = array[len(array) - 1]
@@ -26,8 +28,10 @@ def test_index_access(array):
 
 
 
-def test_arithmetic(array):
+def test_arithmetic(array:VisualArray):
     """Perform arithmetic updates to ensure operator dunders behave."""
+    if not array.elements:
+        array.play(array.create())
     array[0] += 2
     array[1] -= 1
     array[2] *= 3
@@ -38,8 +42,10 @@ def test_arithmetic(array):
 
 
 
-def test_assignment_and_append(array):
+def test_assignment_and_append(array:VisualArray):
     """Directly assign and append values, confirming redraw logic."""
+    if not array.elements:
+        array.play(array.create())
     array[0] = 99
     array[1] = -5
     array.append(42)
@@ -49,8 +55,10 @@ def test_assignment_and_append(array):
 
 
 
-def test_highlight_unhighlight(array):
+def test_highlight_unhighlight(array:VisualArray):
     """Check visual highlight/unhighlight animations."""
+    if not array.elements:
+        array.play(array.create())
     array.play(array.highlight(1))
     array.play(array.unhighlight(array[1]))
     print("test_highlight_unhighlight completed")
@@ -58,8 +66,10 @@ def test_highlight_unhighlight(array):
 
 
 
-def test_index_bounds(array):
+def test_index_bounds(array:VisualArray):
     """Ensure invalid indexes raise proper exceptions."""
+    if not array.elements:
+        array.play(array.create())
     try:
         _ = array[999]
     except IndexError:

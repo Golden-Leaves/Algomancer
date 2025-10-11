@@ -16,7 +16,7 @@ class Cell(VisualElement):
         corner_radius = 0.3 if rounded else 0
         self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
                 Rectangle(width=cell_width, height=cell_height))
-        self.body.set_fill(color=BLACK, opacity=0)
+        self.body.set_fill(BLACK, opacity=0.5)
         self.value = value
         super().__init__(body=self.body,master=master,value=self.value,**kwargs)
 
@@ -61,29 +61,14 @@ class VisualArray(VisualStructure):
               Defaults to ORIGIN on each axis.
         """
        
-    
+        self._raw_data = data #The original structure the user passed in, maybe don't touch this beyond create()
         super().__init__(scene,label,**kwargs)
         self.rounded = kwargs.pop("rounded",False)
         self.text_color = text_color
         # self.elements:list[Cell] = []
         self.cell_width = cell_width
         self.cell_height = cell_height
-        if data:
-
-            for idx,text in enumerate(data):
-                    
-                    cell = Cell(value=text,master=self,cell_width=self.cell_width,cell_height=self.cell_height,
-                                text_color=text_color,rounded=self.rounded)
-                    if idx == 0:
-                        cell.move_to(self.pos)
-                        cell.master = self
-                    else:
-                        cell.next_to(self.elements[idx - 1],RIGHT,buff=0)
-                        
-                    
-                    # self.add(cell)          
-                    self.elements.append(cell)
-            self.move_to(self.pos)
+        
 
             
     def __getitem__(self, index):
@@ -91,7 +76,7 @@ class VisualArray(VisualStructure):
         if isinstance(index, Pointer):
             return self.elements[index.index]
         
-        if self.scene and is_animating() and self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
+        if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
          self.play(self.highlight(index))
         return self.get_element(index)
     
@@ -339,15 +324,14 @@ class VisualArray(VisualStructure):
     def swap(self, idx_1: int, idx_2: int, color=YELLOW, runtime=0.5):
         """Swaps two cells in an array"""
     
-    # Fetch cells
+
         cell_1: Cell = self.get_element(idx_1)
         cell_2: Cell = self.get_element(idx_2)
 
-        # Get their centers before moving
+
         pos_1 = cell_1.center
         pos_2 = cell_2.center
 
-        # Build simple motion animations
         move_1 = self.move_cell(cell_1, target_pos=pos_2)
     
         move_2 = self.move_cell(cell_2, target_pos=pos_1)
@@ -364,6 +348,25 @@ class VisualArray(VisualStructure):
         """Creates the Cell object or index passed, defaults to creating the entire array"""
         if not self.scene:
             return None
+        if self.elements:
+            print("Array already created, skipping rebuild")
+            return None
+        if self._raw_data: #If array hasn't been created yet
+
+            for idx,text in enumerate(self._raw_data):
+                    
+                    cell = Cell(value=text,master=self,cell_width=self.cell_width,cell_height=self.cell_height,
+                                text_color=self.text_color,rounded=self.rounded)
+                    if idx == 0:
+                        cell.move_to(self.pos)
+                        cell.master = self
+                    else:
+                        cell.next_to(self.elements[idx - 1],RIGHT,buff=0)
+                        
+                    
+                    # self.add(cell)          
+                    self.elements.append(cell)
+            self.move_to(self.pos)
         if cells is None:
             cells:list[Cell] = self.elements
 
