@@ -1,9 +1,10 @@
 from manim import *
 from Structures.arrays import VisualArray
-from Structures.pointer import Pointer
+from Structures.pointers import Pointer,PointerRange
 from Algorithms.sorting import bubble_sort,insertion_sort
 from Algorithms.searching import linear_search
 from Utils.runtime import AlgoScene
+from Tests import test_arrays as ta
 from helpers import render_scene
 import numpy as np
 import random
@@ -29,20 +30,25 @@ class ArrayScene(AlgoScene):
 
                     # Remove highlight
                     array.play(array.unhighlight(j), array.unhighlight(j + 1), runtime=0.2)
+    def two_sum(self,nums:VisualArray,target:int):
+        for i in PointerRange(len(nums),master=nums,label="i"):
+            print("I iterable",i,type(i))
+            for j in PointerRange(i + 1,len(nums),master=nums,label="j"):
+                if nums[i] + nums[j] == target:
+                    return [i,j]
+        
                     
     def construct(self):
-
         with self.animation_context():
-            array = VisualArray([1,2,5,22,4,3],scene=self)
-            array.play(array.create())
-            array[1] += 1
-            i = Pointer(0,master=array,label="i")
-            array.play(i.create())
-            i += 1
+            array = VisualArray([1,2,5,4],scene=self)
+            ta.test_create(array=array)
+            # ptr_i = Pointer(0,master=array,label="i")
+            # ptr_j = Pointer(len(array) - 1,master=array,label="j")
+            # array.play(ptr_i.create(),ptr_j.create())
+            # ta.test_full_with_pointers(array=array,ptr_a=ptr_i,ptr_b=ptr_j)
+            result = self.two_sum(nums=array,target="7")
+            print(result)
             
-
-        
-        
         
        
         # array.play(array.create(),array.highlight(cell=1),array.set_value(index=1,value=12))

@@ -3,7 +3,7 @@ import numpy as np
 import math
 from Utils.utils import LazyAnimation,get_offset_position
 from Structures.base import VisualStructure,VisualElement
-from Structures.pointer import Pointer
+from Structures.pointers import Pointer
 from Utils.runtime import is_animating,AlgoScene
 BRIGHT_GREEN = "#00FF00"
 
@@ -27,8 +27,9 @@ class Cell(VisualElement):
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
         self.text.move_to(self.get_center())
         self.text.add_updater(lambda m: m.move_to(self.get_center()))
-        
-        self.add(self.body, self.text)
+        self.body.z_index = 0
+        self.text.z_index = 1
+        self.add(self.text,self.body) #The order matters lol
 
         
         
@@ -74,10 +75,11 @@ class VisualArray(VisualStructure):
     def __getitem__(self, index):
         self.log_event(_type="get",indices=[index],comment=f"Accessing index {index}")
         if isinstance(index, Pointer):
-            return self.elements[index.index]
+            return self.elements[index.value]
         
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
-         self.play(self.highlight(index))
+            anim = Succession(self.highlight(index,runtime=0.2),Wait(0.1),self.unhighlight(index,runtime=0.2))
+            self.play(anim)
         return self.get_element(index)
     
     def __setitem__(self, index, value):
@@ -122,7 +124,6 @@ class VisualArray(VisualStructure):
         cell: Cell = self.elements[self._iter_index]
 
         if self.scene and is_animating() and not self.scene.in_play:
-            # Yellow traversal highlight, same as __contains__
             anim = Succession(
                 self.highlight(cell=cell, color=YELLOW, runtime=0.15),
                 Wait(0.1),
