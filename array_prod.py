@@ -40,7 +40,7 @@ class ArrayScene(AlgoScene):
                     
     def construct(self):
         with self.animation_context():
-            array = VisualArray([1,2,5,4],scene=self)
+            array = VisualArray([1,2,5],scene=self)
             ta.test_create(array=array)
             # ptr_i = Pointer(0,master=array,label="i")
             # ptr_j = Pointer(len(array) - 1,master=array,label="j")

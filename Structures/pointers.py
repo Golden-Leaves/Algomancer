@@ -267,7 +267,10 @@ class Pointer(VisualElement):
         new_pos = get_offset_position(master_element, direction=self.direction,buff=0.05)
         arrow_pos = new_pos - old_pos
         
-        return ApplyMethod(self.shift,arrow_pos)
+        anim = ApplyMethod(self.shift, arrow_pos)
+      
+        # self.value = new_index
+        return anim
     
 class PointerRange:
     """
@@ -346,15 +349,16 @@ class PointerRange:
            
             raise StopIteration
 
-        old_index = self.pointer.value
-        new_index = next_index
+        # old_index = self.pointer.value
+        # new_index = next_index
         self._current = next_index
 
         if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
             print("Pointer Type: ",type(self.pointer))
-            anim = self.pointer.move_pointer(old_index=old_index, new_index=new_index)
-            self.pointer.value = self._current
+            anim = self.pointer.move_pointer(old_index=old_index, new_index=next_index)
+            # self.pointer.value = self._current
             self.master.play(anim)
+            self.pointer.value = next_index
 
         # return self.pointer
         return self._current
