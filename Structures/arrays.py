@@ -21,12 +21,12 @@ class Cell(VisualElement):
         super().__init__(body=self.body,master=master,value=self.value,**kwargs)
 
         
-        # Create the text inside
+
 
         text_scale = 0.4 * cell_height / MathTex("0").height #38% of cell area
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
         self.text.move_to(self.get_center())
-        self.text.add_updater(lambda m: m.move_to(self.get_center()))
+        self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
         self.body.z_index = 0
         self.text.z_index = 1
         self.add(self.text,self.body) #The order matters lol
@@ -134,25 +134,33 @@ class VisualArray(VisualStructure):
         self._iter_index += 1
         return cell
     
-    def get_index(self, cell:Cell) -> int:
-        """Returns the index of the cell"""
-        if isinstance(cell, int):
-            #Why would you wanna pass an index in here???
-            if 0 <= cell < len(self.elements):
-                return cell
+    def get_index(self, element: VisualElement) -> int:
+        """Returns the index of a visual element"""
+        elements = getattr(element.master, "elements", None)
+        if elements is None:
+            raise AttributeError(f"{type(element.master).__name__} has no attribute 'elements'.")
+
+        if isinstance(element, int):
+            # Why would you wanna pass an index in here???
+            if 0 <= element < len(elements):
+                return element
             else:
-                raise IndexError(f"Index {cell} out of bounds for array of size {len(self.elements)}.")
-            
-        elif isinstance(cell, Cell):
-            try:
-                return self.elements.index(cell)
-            except ValueError:
-                raise ValueError("Cell does not belong to this VisualArray.")
+                raise IndexError(f"Index {element} out of bounds for array of size {len(elements)}.")
+
+        elif isinstance(element, VisualElement):
+            # manual identity comparison to avoid triggering __eq__()
+            for i, el in enumerate(elements):
+                if el is element:
+                    return i
+            raise ValueError("Element does not belong to this VisualStructure.")
         else:
-            raise TypeError(f"Expected int or Cell, got {type(cell).__name__}")
+            raise TypeError(f"Expected int or VisualElement, got {type(element).__name__}")
           
-    def set_value(self,index:int|Cell,value:any):
+    def set_value(self,index:int|Cell,value:any) -> Succession|Transform:
         def build():
+            if isinstance(value,VisualElement) and getattr(value,"master",None) is not None:
+                return self.swap(idx_1=index,idx_2=value.master.get_element(value))
+            
             element_value = value.value if hasattr(value,"value") else value
             print(element_value)
             cell:Cell = self.get_element(index)
@@ -166,11 +174,11 @@ class VisualArray(VisualStructure):
             return Transform(cell.text,new_text,run_time=0.5)
         return LazyAnimation(builder=build)
     
-    def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True,scalar=False):
+    def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True,scalar=False) -> Succession:
         if scalar:
             return Wait(0)
             
-        cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2)
+        cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2) 
         color = GREEN if result else RED
         scale = 1.08 if result else 1.15  # slightly larger pulse for "swap"   
         
@@ -322,26 +330,49 @@ class VisualArray(VisualStructure):
         self.play(self.shift_cell(from_idx=len(self.elements) - 1,to_idx=index))
         
     
-    def swap(self, idx_1: int, idx_2: int, color=YELLOW, runtime=0.5):
-        """Swaps two cells in an array"""
+    # def swap(self, idx_1: int, idx_2: int, color=YELLOW, runtime=0.5) -> Succession:
+    #     """Swaps two cells in an array"""
     
 
-        cell_1: Cell = self.get_element(idx_1)
-        cell_2: Cell = self.get_element(idx_2)
+    #     cell_1: Cell = self.get_element(idx_1)
+    #     cell_2: Cell = self.get_element(idx_2)
 
 
-        pos_1 = cell_1.center
+    #     pos_1 = cell_1.center
+    #     pos_2 = cell_2.center
+
+    #     move_1 = self.move_cell(cell_1, target_pos=pos_2)
+    
+    #     move_2 = self.move_cell(cell_2, target_pos=pos_1)
+    #     self.elements[idx_2] = cell_1
+    #     self.elements[idx_1] = cell_2
+    #     # Return simultaneous motion
+    #     # return AnimationGroup(move_1, move_2, lag_ratio=0.2)
+    #     return Succession(move_1, move_2, runtime=0.5)
+    def swap(self, idx_1: VisualElement|int, idx_2: VisualElement|int, color=YELLOW, runtime=0.5) -> Succession:
+        """
+        Swaps two elements that may or may not be from different structures
+        """
+        if not isinstance(idx_1,(VisualElement,int)) or not isinstance(idx_2,(VisualElement,int)):
+            print("swap() only accepts VisualElements or ints")
+            raise TypeError
+
+        cell_1 = idx_1 if isinstance(idx_1,VisualElement) else self.get_element(idx_1)
+        cell_2 = idx_2 if isinstance(idx_2,VisualElement) else self.get_element(idx_2)
+        idx_1 = idx_1.master.get_index(idx_1) if isinstance(idx_1,VisualElement) else idx_1
+        idx_2 = idx_2.master.get_index(idx_2) if isinstance(idx_2,VisualElement) else idx_2
+
+        pos_1 = cell_1.center 
         pos_2 = cell_2.center
 
-        move_1 = self.move_cell(cell_1, target_pos=pos_2)
-    
-        move_2 = self.move_cell(cell_2, target_pos=pos_1)
-        self.elements[idx_2] = cell_1
-        self.elements[idx_1] = cell_2
-        # Return simultaneous motion
-        # return AnimationGroup(move_1, move_2, lag_ratio=0.2)
-        return Succession(move_1, move_2, runtime=0.5)
+        # (currently uses move_cell, future: move_element)
+        move_1 = self.move_cell(cell_1, target_pos=pos_2, runtime=runtime)
+        move_2 = self.move_cell(cell_2, target_pos=pos_1,runtime=runtime)
 
+        self.elements[idx_1], self.elements[idx_2] = self.elements[idx_2], self.elements[idx_1]
+
+        return Succession(move_1,move_2,runtime=0.45)
+        # return Succession(Wait(0),AnimationGroup(move_1,move_2,lag_ratio=0.2))
     
 
 

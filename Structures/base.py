@@ -1,10 +1,11 @@
 from __future__ import annotations
 from manim import *
 import numpy as np
-from Utils.utils import LazyAnimation,flatten_array,Event,resolve_value
+from Utils.utils import LazyAnimation,flatten_array,Event,resolve_value,get_operation
+from Utils.runtime import is_animating,AlgoScene
 from typing import Any
 import weakref
-from Utils.runtime import is_animating,AlgoScene
+
 class VisualStructure(VGroup):
     def __init__(self, scene,label, **kwargs):
         super().__init__(**kwargs)
@@ -47,14 +48,14 @@ class VisualStructure(VGroup):
                         raise TypeError(f"Unexpected {type(anim)} passed to play()")
                     self.scene.play(anim, **kwargs)
                     
-    def get_element(self, cell_or_index:VisualElement|int):
+    def get_element(self, cell_or_index:VisualElement|int) -> VisualElement:
         """Error handling opps, can also be used to retrieve an element with an index"""
-        from Structures.pointer import Pointer
+        from Structures.pointers import Pointer
     # Case 1: int → lookup in self.elements
-        print("Get Element:",cell_or_index,type(cell_or_index))
+        # print("Get Element:",cell_or_index,type(cell_or_index))
         
         if isinstance(cell_or_index, int):
-            print("Accessed Index:", self.elements[cell_or_index])
+            # print("Accessed Index:", self.elements[cell_or_index])
             try:
                 return self.elements[cell_or_index]
             except IndexError:
@@ -66,18 +67,39 @@ class VisualStructure(VGroup):
         # Case 2: already a Cell 
         elif isinstance(cell_or_index, VisualElement):
             if not any(c is cell_or_index for c in self.elements): #This is used because 'in' calls __eq__ -> Inf Recursion
-            # if not cell_or_index in self.elements: 
                 raise ValueError(
                     "Cell object does not belong to this VisualStructure."
                 )
             return cell_or_index
+        
         elif isinstance(cell_or_index, Pointer):
-            cell_or_index = cell_or_index.index
+            cell_or_index:Pointer = cell_or_index.value
         # Case 3: goofy input
         else:
             raise TypeError(
                 f"Expected int or Cell object, got {type(cell_or_index).__name__}."
             )       
+    def get_index(self, element: VisualElement) -> int:
+        """Returns the index of a visual element"""
+        elements = getattr(element.master, "elements", None)
+        if elements is None:
+            raise AttributeError(f"{type(element.master).__name__} has no attribute 'elements'.")
+
+        if isinstance(element, int):
+            # Why would you wanna pass an index in here???
+            if 0 <= element < len(elements):
+                return element
+            else:
+                raise IndexError(f"Index {element} out of bounds for array of size {len(elements)}.")
+
+        elif isinstance(element, VisualElement):
+            # manual identity comparison to avoid triggering __eq__()
+            for i, el in enumerate(elements):
+                if el is element:
+                    return i
+            raise ValueError("Element does not belong to this VisualStructure.")
+        else:
+            raise TypeError(f"Expected int or VisualElement, got {type(element).__name__}")
     def log_event(self,_type: str,
         indices: list[int] | None = None,other: Any | None = None, value: Any|None = None,
         result: bool | None = None,comment: str | None = None):
@@ -98,12 +120,14 @@ class VisualStructure(VGroup):
         )
         self._trace.append(event)
     def highlight(self, cell:int|VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        cell: VisualElement = self.get_element(cell).body  
-        return ApplyMethod(cell.set_fill, color, opacity, run_time=runtime)
+        # cell: VisualElement = self.get_element(cell).body  
+        cell: VisualElement = self.get_element(cell)
+        return ApplyMethod(cell.body.set_fill, color, opacity, run_time=runtime)
 
-    def unhighlight(self, cell:int|VisualElement, runtime=0.5) -> ApplyMethod:
-        cell: VisualElement = self.get_element(cell).body
-        return ApplyMethod(cell.set_fill, BLACK,0, run_time=runtime)
+    def unhighlight(self, cell:int|VisualElement, runtime=0.5) -> ApplyMethod: #TODO: Fix this broken ahh method
+        # cell: VisualElement = self.get_element(cell).body
+        cell: VisualElement = self.get_element(cell)
+        return ApplyMethod(cell.body.set_fill, BLACK,0.5, run_time=runtime)
     
     def outline(self, cell:int|VisualElement, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
         cell:Rectangle = self.get_element(cell).body
@@ -180,50 +204,22 @@ class VisualElement(VGroup):
             return None
         if self is other:
             return True
-        if isinstance(other, VisualElement):
-            if op == "==":
-                result = self.value == other.value
-            elif op == "!=":
-                result = self.value != other.value
-            elif op == "<":
-                result = self.value < other.value
-            elif op == "<=":
-                result = self.value <= other.value
-            elif op == ">":
-                result = self.value > other.value
-            elif op == ">=":
-                result = self.value >= other.value
-            else:
-                raise ValueError(f"Unsupported comparison operator: {op}")
+        other_value = other.value if hasattr(other,"value") else other
+        operation = get_operation(op=op)
+        result = operation(self.value,other_value)
+        # Log and visualize
+        self.master.log_event(_type="compare", other=other, result=result)
+        if self.master.scene and is_animating() and not self.master.scene.in_play:
+            
+            master_anim = self.master.compare(self, other, result=result)
+            self.master.play(master_anim)
+        return result
 
-            # Log and visualize
-            self.master.log_event(_type="compare", other=other, result=result)
-            if self.master.scene and is_animating() and self.master.scene.in_play:
-                self.master.play(self.master.compare(self, other, result=result))
-            return result
-
-        elif isinstance(other, (int, float, str, bool)):
-            if op == "==":
-                return self.value == other
-            elif op == "!=":
-                return self.value != other
-            elif op == "<":
-                return self.value < other
-            elif op == "<=":
-                return self.value <= other
-            elif op == ">":
-                return self.value > other
-            elif op == ">=":
-                return self.value >= other
-            else:
-                raise ValueError(f"Unsupported comparison operator: {op}")
-
-        return NotImplemented
-    def __eq__(self, other): #TODO: Culprit
+    def __eq__(self, other): 
         comparison = self._compare(other=other, op="==")
-        if comparison is NotImplemented:
-            # If it's purely graphical, maybe just attach or combine
-            return super().__eq__(other)
+        # if comparison is NotImplemented:
+        #     # If it's purely graphical, maybe just attach or combine
+        #     return super().__eq__(other)
         return comparison
     def __ne__(self, other):
         return self._compare(other=other, op="!=")
@@ -242,36 +238,55 @@ class VisualElement(VGroup):
         return self._compare(other=other, op=">=")
     
     def _arith(self, other, op):
-        from Structures.pointer import Pointer
+
         ARITHMETIC_COLOR_MAP = {
             "+": BLUE_C,
             "-": GOLD_E,
             "*": PURPLE_A,
             "/": ORANGE,
+            "//": ORANGE,
+            "%": TEAL_C,
         }
         SCALE_MAP = {
         "+": 1.2,
         "*": 1.3,
         "-": 0.85,
         "/": 0.8,
+        "//": 0.8,
+        "%": 0.9,
     }
-        if not isinstance(other,VisualElement):
-            result = eval(f"self.value {op} other")
+        # if not isinstance(other,VisualElement):
+        #     result = eval(f"self.value {op} other")
            
-        else:
-            result = eval(f"self.value {op} other.value")
-        if not isinstance(other,Pointer):
-            color = ARITHMETIC_COLOR_MAP[op]
+        # else:
+        #     result = eval(f"self.value {op} other.value")
+        other_value = other.value if hasattr(other, "value") else other
+        operation = get_operation(op=op)
+        result = operation(self.value,other_value)
+        print("Result value and type: ",result,type(result))
+        color = ARITHMETIC_COLOR_MAP[op]
 
-            self.master.log_event(_type=f"arithmetic-{op}", result=result)
-            print("Is animating?",is_animating())
-            if self.master.scene and is_animating() and self.master.scene.in_play:
-                anim = AnimationGroup(
-                self.master.highlight(self,color=color, runtime=0.1),
-                Indicate(self, color=color, scale_factor=SCALE_MAP[op]),
-                self.master.unhighlight(self,runtime=0.15)
-            )
-                self.master.play(anim)
+        self.master.log_event(_type=f"arithmetic-{op}", result=result)
+
+        if self.master.scene and is_animating() and not self.master.scene.in_play:
+            anims = []
+            master_anim = AnimationGroup(
+            self.master.highlight(self,color=color, runtime=0.1),
+            Indicate(self, color=color, scale_factor=SCALE_MAP[op]),
+            # self.master.set_fill(opacity=0),
+            self.master.unhighlight(self,runtime=0.15)
+        )
+            anims.append(master_anim)
+            if isinstance(other,VisualElement) and getattr(other,"master",None) is not None :
+                print("Other type",type(other))
+                other_anim = AnimationGroup(
+                other.master.highlight(self,color=color, runtime=0.1),
+                Indicate(other, color=color, scale_factor=SCALE_MAP[op]),
+                # self.master.set_fill(opacity=0),
+                other.master.unhighlight(self,runtime=0.15))
+                anims.append(other_anim)
+            
+            self.master.play(AnimationGroup(*anims))
         return result
     def __add__(self, other):
         return self._arith(other=other,op="+")
@@ -281,10 +296,15 @@ class VisualElement(VGroup):
         return self._arith(other=other,op="*")
     def __truediv__(self, other):
         return self._arith(other=other,op="/")
+    def __floordiv__(self,other):
+        return self._arith(other=other,op="//")
+    def __mod__(self,other):
+        return self._arith(other=other,op="%")
+    
     def __iadd__(self, other):
         result = self._arith(other=other, op="+")
-        self.value = result  # update this object’s internal value
-        return self          # must return self for in-place ops
+        self.value = result  
+        return self          
 
     def __isub__(self, other):
         result = self._arith(other=other, op="-")
@@ -300,7 +320,16 @@ class VisualElement(VGroup):
         result = self._arith(other=other, op="/")
         self.value = result
         return self
-
+    
+    def __ifloordiv__(self, other):
+        result = self._arith(other=other, op="//")
+        self.value = result
+        return self
+    
+    def __imod__(self, other):
+        result = self._arith(other=other, op="%")
+        self.value = result
+        return self
     # --- Dimensions ---
     @property
     def body_width(self):
