@@ -52,10 +52,8 @@ class VisualStructure(VGroup):
         """Error handling opps, can also be used to retrieve an element with an index"""
         from Structures.pointers import Pointer
     # Case 1: int → lookup in self.elements
-        # print("Get Element:",cell_or_index,type(cell_or_index))
         
         if isinstance(cell_or_index, int):
-            # print("Accessed Index:", self.elements[cell_or_index])
             try:
                 return self.elements[cell_or_index]
             except IndexError:
@@ -100,6 +98,7 @@ class VisualStructure(VGroup):
             raise ValueError("Element does not belong to this VisualStructure.")
         else:
             raise TypeError(f"Expected int or VisualElement, got {type(element).__name__}")
+        
     def log_event(self,_type: str,
         indices: list[int] | None = None,other: Any | None = None, value: Any|None = None,
         result: bool | None = None,comment: str | None = None):
@@ -124,7 +123,7 @@ class VisualStructure(VGroup):
         cell: VisualElement = self.get_element(cell)
         return ApplyMethod(cell.body.set_fill, color, opacity, run_time=runtime)
 
-    def unhighlight(self, cell:int|VisualElement, runtime=0.5) -> ApplyMethod: #TODO: Fix this broken ahh method
+    def unhighlight(self, cell:int|VisualElement, runtime=0.5) -> ApplyMethod: 
         # cell: VisualElement = self.get_element(cell).body
         cell: VisualElement = self.get_element(cell)
         return ApplyMethod(cell.body.set_fill, BLACK,0.5, run_time=runtime)
@@ -199,45 +198,62 @@ class VisualElement(VGroup):
     
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
-
+        print(resolve_value(other))
         if resolve_value(other) is NotImplemented:
-            return None
+            return NotImplemented
         if self is other:
             return True
         other_value = other.value if hasattr(other,"value") else other
         operation = get_operation(op=op)
         result = operation(self.value,other_value)
         # Log and visualize
-        self.master.log_event(_type="compare", other=other, result=result)
-        if self.master.scene and is_animating() and not self.master.scene.in_play:
-            
-            master_anim = self.master.compare(self, other, result=result)
-            self.master.play(master_anim)
+        try:
+            self.master.log_event(_type="compare", other=other, result=result)
+            if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
+                
+                master_anim = self.master.compare(self, other, result=result)
+                self.master.play(master_anim)
+        except ValueError: #Manim's internals cooking
+            return NotImplemented
         return result
 
     def __eq__(self, other): 
         comparison = self._compare(other=other, op="==")
-        # if comparison is NotImplemented:
-        #     # If it's purely graphical, maybe just attach or combine
-        #     return super().__eq__(other)
+        if comparison is NotImplemented:
+            return super().__eq__(other)
+        
         return comparison
     def __ne__(self, other):
-        return self._compare(other=other, op="!=")
+        comparison = self._compare(other=other, op="!=")
+        if comparison is NotImplemented:
+            return super().__ne__(other)
+        return comparison
 
     def __lt__(self, other):
-        print("Entering __lt__")
-        return self._compare(other=other, op="<")
+        comparison = self._compare(other=other, op="<")
+        if comparison is NotImplemented:
+            return super().__lt__(other)
+        return comparison
 
     def __le__(self, other):
-        return self._compare(other=other, op="<=")
+        comparison = self._compare(other=other, op="<=")
+        if comparison is NotImplemented:
+            return super().__le__(other)
+        return comparison
 
     def __gt__(self, other):
-        return self._compare(other=other, op=">")
+        comparison = self._compare(other=other, op=">")
+        if comparison is NotImplemented:
+            return super().__gt__(other)
+        return comparison
 
     def __ge__(self, other):
-        return self._compare(other=other, op=">=")
+        comparison = self._compare(other=other, op=">=")
+        if comparison is NotImplemented:
+            return super().__ge__(other)
+        return comparison
     
-    def _arith(self, other, op):
+    def _arith(self, other, op, other_on_left: bool = False):
 
         ARITHMETIC_COLOR_MAP = {
             "+": BLUE_C,
@@ -255,14 +271,15 @@ class VisualElement(VGroup):
         "//": 0.8,
         "%": 0.9,
     }
-        # if not isinstance(other,VisualElement):
-        #     result = eval(f"self.value {op} other")
-           
-        # else:
-        #     result = eval(f"self.value {op} other.value")
-        other_value = other.value if hasattr(other, "value") else other
+      
+        other_value = resolve_value(other)
+        if other_value is NotImplemented:
+            return NotImplemented
+        
+        left_value = other_value if other_on_left else self.value
+        right_value = self.value if other_on_left else other_value
         operation = get_operation(op=op)
-        result = operation(self.value,other_value)
+        result = operation(left_value,right_value)
         print("Result value and type: ",result,type(result))
         color = ARITHMETIC_COLOR_MAP[op]
 
@@ -277,8 +294,7 @@ class VisualElement(VGroup):
             self.master.unhighlight(self,runtime=0.15)
         )
             anims.append(master_anim)
-            if isinstance(other,VisualElement) and getattr(other,"master",None) is not None :
-                print("Other type",type(other))
+            if isinstance(other,VisualElement) and getattr(other,"master",None) is not None : #Plays an animation if other is an element
                 other_anim = AnimationGroup(
                 other.master.highlight(self,color=color, runtime=0.1),
                 Indicate(other, color=color, scale_factor=SCALE_MAP[op]),
@@ -300,6 +316,18 @@ class VisualElement(VGroup):
         return self._arith(other=other,op="//")
     def __mod__(self,other):
         return self._arith(other=other,op="%")
+    def __radd__(self, other):
+        return self._arith(other=other, op="+", other_on_left=True)
+    def __rsub__(self, other):
+        return self._arith(other=other, op="-", other_on_left=True)
+    def __rmul__(self, other):
+        return self._arith(other=other, op="*", other_on_left=True)
+    def __rtruediv__(self, other):
+        return self._arith(other=other, op="/", other_on_left=True)
+    def __rfloordiv__(self, other):
+        return self._arith(other=other, op="//", other_on_left=True)
+    def __rmod__(self, other):
+        return self._arith(other=other, op="%", other_on_left=True)
     
     def __iadd__(self, other):
         result = self._arith(other=other, op="+")
