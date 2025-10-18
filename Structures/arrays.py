@@ -69,7 +69,8 @@ class VisualArray(VisualStructure):
         # self.elements:list[Cell] = []
         self.cell_width = cell_width
         self.cell_height = cell_height
-        
+        self._instantialized = False
+        self._iter_pointer = None
 
             
     def __getitem__(self, index):
@@ -113,53 +114,75 @@ class VisualArray(VisualStructure):
                 break
         self.log_event(_type="contains",value=value,result=result,comment=f"Find value {value} in array")
         return result
+    
     def __iter__(self):
-        self._iter_index = 0
+        self._iter_index = 0 #Index of the NEXT iteration
         return self
 
+    # def __next__(self):
+    #     if self._iter_index >= len(self):
+    #         raise StopIteration
+
+    #     cell: Cell = self.elements[self._iter_index]
+
+    #     if self.scene and is_animating() and not self.scene.in_play:
+    #         anim = Succession(
+    #             self.highlight(cell=cell, color=YELLOW, runtime=0.15),
+    #             Wait(0.1),
+    #             self.unhighlight(cell=cell, runtime=0.1),
+    #         )
+    #         self.play(anim)
+
+    #     self._iter_index += 1
+    #     return cell
     def __next__(self):
+        
+        if not self._iter_pointer:
+            self._iter_pointer = Pointer(value=self._iter_index,master=self,color=GRAY_B,direction=UP,size=0.7)
+            self.play(self._iter_pointer.create())
+            
         if self._iter_index >= len(self):
+            self._iter_pointer.destroy()
+            self._iter_pointer = None
             raise StopIteration
-
-        cell: Cell = self.elements[self._iter_index]
-
+        
+   
+        cell = self.get_element(self._iter_index)
         if self.scene and is_animating() and not self.scene.in_play:
-            anim = Succession(
-                self.highlight(cell=cell, color=YELLOW, runtime=0.15),
-                Wait(0.1),
-                self.unhighlight(cell=cell, runtime=0.1),
-            )
-            self.play(anim)
+           anim = self._iter_pointer.move_pointer(old_index=self._iter_pointer.value,new_index=self._iter_index)
+           self.play(anim)
 
         self._iter_index += 1
         return cell
     
-    def get_index(self, element: VisualElement) -> int:
-        """Returns the index of a visual element"""
-        elements = getattr(element.master, "elements", None)
-        if elements is None:
-            raise AttributeError(f"{type(element.master).__name__} has no attribute 'elements'.")
-
-        if isinstance(element, int):
-            # Why would you wanna pass an index in here???
-            if 0 <= element < len(elements):
-                return element
-            else:
-                raise IndexError(f"Index {element} out of bounds for array of size {len(elements)}.")
-
-        elif isinstance(element, VisualElement):
-            # manual identity comparison to avoid triggering __eq__()
-            for i, el in enumerate(elements):
-                if el is element:
-                    return i
-            raise ValueError("Element does not belong to this VisualStructure.")
+    def sort(self, key=None, reverse=False,*args,**kwargs):
+        """
+        Sorts the VisualArray immediately (no animation).
+        Only updates visuals to reflect the new order.
+        """
+        if self.scene and is_animating() and not self.scene.in_play:
+            slots = [element.center for element in self.elements] #Snap shot the current positions of each index
+            self.elements.sort(key= lambda el: el.value, reverse=reverse)
+            for i, elem in enumerate(self.elements):
+                # reposition to correct cell position without animation
+                elem.move_to(slots[i])
+                
+            self.submobjects = list(self.elements)
+            print("Sorted elements: ",self.elements)
+            self.log_event(
+                _type="sort",
+                comment=f"VisualArray sorted (reverse={reverse}, key={key is not None})"
+            )
+            self.play(Wait(0.1))
+            return self
         else:
-            raise TypeError(f"Expected int or VisualElement, got {type(element).__name__}")
+            return super().sort(*args,**kwargs)
+
           
     def set_value(self,index:int|Cell,value:any) -> Succession|Transform:
         def build():
-            if isinstance(value,VisualElement) and getattr(value,"master",None) is not None:
-                return self.swap(idx_1=index,idx_2=value.master.get_element(value))
+            # if isinstance(value,VisualElement) and getattr(value,"master",None) is not None:
+            #     return self.swap(idx_1=index,idx_2=value.master.get_element(value))
             
             element_value = value.value if hasattr(value,"value") else value
             print(element_value)
@@ -285,7 +308,8 @@ class VisualArray(VisualStructure):
    
     
     def append(self,data,runtime=0.5,recenter=True) -> None:
-
+        if not self._instantialized:
+            self.create()
         cell = Cell(value=data,master=self,cell_width=self.cell_width)
         last_cell:Cell = self.elements[-1] if self.elements else cell
         if self.elements:#If an array already exists
@@ -330,25 +354,6 @@ class VisualArray(VisualStructure):
         self.play(self.shift_cell(from_idx=len(self.elements) - 1,to_idx=index))
         
     
-    # def swap(self, idx_1: int, idx_2: int, color=YELLOW, runtime=0.5) -> Succession:
-    #     """Swaps two cells in an array"""
-    
-
-    #     cell_1: Cell = self.get_element(idx_1)
-    #     cell_2: Cell = self.get_element(idx_2)
-
-
-    #     pos_1 = cell_1.center
-    #     pos_2 = cell_2.center
-
-    #     move_1 = self.move_cell(cell_1, target_pos=pos_2)
-    
-    #     move_2 = self.move_cell(cell_2, target_pos=pos_1)
-    #     self.elements[idx_2] = cell_1
-    #     self.elements[idx_1] = cell_2
-    #     # Return simultaneous motion
-    #     # return AnimationGroup(move_1, move_2, lag_ratio=0.2)
-    #     return Succession(move_1, move_2, runtime=0.5)
     def swap(self, idx_1: VisualElement|int, idx_2: VisualElement|int, color=YELLOW, runtime=0.5) -> Succession:
         """
         Swaps two elements that may or may not be from different structures
@@ -382,9 +387,10 @@ class VisualArray(VisualStructure):
             return None
         if self.elements:
             print("Array already created, skipping rebuild")
-            return None
-        if self._raw_data: #If array hasn't been created yet
-
+            return Wait(1e-6)
+        
+        if not self._instantialized: #If array hasn't been created yet
+            print("Instantializing stuff...")
             for idx,text in enumerate(self._raw_data):
                     
                     cell = Cell(value=text,master=self,cell_width=self.cell_width,cell_height=self.cell_height,
@@ -396,17 +402,22 @@ class VisualArray(VisualStructure):
                         cell.next_to(self.elements[idx - 1],RIGHT,buff=0)
                         
                     
-                    # self.add(cell)          
+                    self.add(cell)          
                     self.elements.append(cell)
+            self._instantialized = True
             self.move_to(self.pos)
+     
         if cells is None:
             cells:list[Cell] = self.elements
-
+        if not cells:
+            return Wait(1e-6)
+        
+        
         #AnimationGroup in here controls cell vs text behaviour
         runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
         cell_objs = [AnimationGroup(Create(cell.body),Write(cell.text),lag_ratio=runtime) for cell in cells]
         
-        return AnimationGroup( #Control cells relative to other cells
+        return AnimationGroup( 
             *cell_objs,
             lag_ratio=0.1,
             runtime=runtime
