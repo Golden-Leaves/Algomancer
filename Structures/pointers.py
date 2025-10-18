@@ -28,11 +28,12 @@ class Pointer(VisualElement):
     _next_id = 0
     def __init__(self,value:int,master:VisualStructure,label:str = "",color=YELLOW,direction:np.ndarray=UP,**kwargs):
         self.id = Pointer._next_id
+        self.size = kwargs.pop("size",1)
         type(self)._next_id += 1 #Polymorphism-friendly, since it calls the class that inherited and not Pointer if that's the case
         super().__init__(label=label,value=value,master=master,**kwargs)
         self.color = color
         self.direction = direction
-         
+        
          
     def __hash__(self):
         return id(self)
@@ -80,11 +81,16 @@ class Pointer(VisualElement):
   
     def __index__(self): return self.value
     def __int__(self): return self.value
-    def __repr__(self):
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            return f"<AnimatedPointer @ index {self.value}>"
-        else:
-            return str(self.value)
+    def __repr__(self) -> str:
+          """Human-friendly pointer debug string."""
+          master = self.master
+          scene = getattr(master, "scene", None)
+          animating = bool(scene and is_animating() and not scene.in_play)
+          label = f' label="{self.label}"' if self.label else ""
+
+          return f"<Pointer id={self.id} idx={self.value}{label} master={master}>"
+    def __str__(self):
+        return self.__repr__()
 
     
     def __eq__(self, other): return self._compare(other=other,op="==")
@@ -94,146 +100,93 @@ class Pointer(VisualElement):
     def __le__(self, other): return self._compare(other=other,op="<=")
     def __ge__(self, other): return self._compare(other=other,op=">=")
     
+    def _apply_pointer_op(self, other: int, op: str):
+        if not isinstance(other, int):
+            return NotImplemented
+        operation = get_operation(op=op)
+        new_index = operation(self.value, other)
+
+        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
+            anim = self.move_pointer(old_index=self.value, new_index=new_index)
+            self.master.play(anim)
+            return self
+        return new_index
        
     def __add__(self, other: int):
-        if not isinstance(other, int):
-            return NotImplemented
-        new_index = self.value + other
-        
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            return self
-        else:
-            return new_index
+        return self._apply_pointer_op(other, "+")
    
-
+   
     def __sub__(self, other: int):
-        if not isinstance(other, int):
-            return NotImplemented
-        new_index = self.value - other
-        
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            return self
-        else:
-            return new_index
+        return self._apply_pointer_op(other, "-")
 
     def __mul__(self, other: int):
-        if not isinstance(other, int):
-            return NotImplemented
-        new_index = self.value * other
-        
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            return self
-        else:
-            return new_index
+        return self._apply_pointer_op(other, "*")
 
     def __floordiv__(self, other: int):
         if not isinstance(other, int):
             return NotImplemented
         if other == 0:
             raise ZeroDivisionError("Pointer floordiv by zero")
-        new_index = self.value // other
-        
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            return self
-        else:
-            return new_index
+        return self._apply_pointer_op(other, "//")
 
     def __mod__(self, other: int):
         if not isinstance(other, int):
             return NotImplemented
         if other == 0:
             raise ZeroDivisionError("Pointer modulo by zero")
-        new_index = self.value % other
-        
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            return self
-        else:
-            return new_index
+        return self._apply_pointer_op(other, "%")
 
 
 
     def __iadd__(self, other: int):
-        if not isinstance(other, int):
+        result = self._apply_pointer_op(other, "+")
+        if result is NotImplemented:
             return NotImplemented
-        new_index = self.value + other
-        
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            self.value += other
-            return self
-        else:
-            self.value += other
-            return new_index
+        if isinstance(result, type(self)):
+            return result
+        self.value = result
+        return result
 
     def __isub__(self, other: int):
-        if not isinstance(other, int):
+        result = self._apply_pointer_op(other, "-")
+        if result is NotImplemented:
             return NotImplemented
-        new_index = self.value - other
-
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            self.value -= other
-            return self
-        else:
-            self.value -= other
-            return new_index
+        if isinstance(result, type(self)):
+            return result
+        self.value = result
+        return result
 
 
     def __imul__(self, other: int):
-        if not isinstance(other, int):
+        result = self._apply_pointer_op(other, "*")
+        if result is NotImplemented:
             return NotImplemented
-        new_index = self.value * other
-
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            self.value *= other
-            return self
-        else:
-            self.value *= other
-            return new_index
+        if isinstance(result, type(self)):
+            return result
+        self.value = result
+        return result
 
 
     def __itruediv__(self, other: int):
-        if not isinstance(other, int):
+        result = self._apply_pointer_op(other, "/")
+        if result is NotImplemented:
             return NotImplemented
-        new_index = self.value / other
-
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            self.value /= other
-            return self
-        else:
-            self.value /= other
-            return new_index
+        if isinstance(result, type(self)):
+            return result
+        self.value = result
+        return result
 
 
     def __ifloordiv__(self, other: int):
         if not isinstance(other, int):
             return NotImplemented
-        new_index = self.value // other
-
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
-            self.value //= other
-            return self
-        else:
-            self.value //= other
-            return new_index
+        if other == 0:
+            raise ZeroDivisionError("Pointer floordiv by zero")
+        result = self._apply_pointer_op(other, "//")
+        if isinstance(result, type(self)):
+            return result
+        self.value = result
+        return result
     
         
     
@@ -243,9 +196,9 @@ class Pointer(VisualElement):
         arrow_end = get_offset_position(master_element, direction=self.direction,buff=0.05)
         arrow_start = get_offset_position(master_element,coordinate=arrow_end, direction=self.direction)
     
-        self.body = Arrow(arrow_start, arrow_end, buff=0.1, stroke_width=master_element.body_width * 0.45)
-
-        # Label positioned near tail
+        self.body = Arrow(arrow_start, arrow_end, buff=0.1, stroke_width=master_element.body_width * 0.45,color=self.color)
+        self.body.scale(self.size,about_point=arrow_end)
+        # Label positioned near start
         text_scale = self.body.stroke_width * 0.8
         self.label = Text(self.label).scale(text_scale)
         self.label.next_to(self.body, self.direction, buff=0.15).align_to(self.body, ORIGIN)
@@ -259,8 +212,6 @@ class Pointer(VisualElement):
     def move_pointer(self,old_index:int,new_index:int):
         old_index = old_index.value if isinstance(old_index,VisualElement) else old_index
         new_index = new_index.value if isinstance(new_index,VisualElement) else new_index
-        print("Old Index",old_index)
-        print("New Index",new_index)
         old_master_element = self.master.get_element(old_index)
         master_element:VisualElement = self.master.get_element(new_index)
         old_pos = get_offset_position(old_master_element, direction=self.direction,buff=0.05)
@@ -268,9 +219,16 @@ class Pointer(VisualElement):
         arrow_pos = new_pos - old_pos
         
         anim = ApplyMethod(self.shift, arrow_pos)
-      
-        # self.value = new_index
+        self.value = new_index
         return anim
+    
+    def destroy(self):
+        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
+            self.master.play(FadeOut(self))
+        self.clear_updaters()
+        self.label = None
+        self.body = None
+        self.become(VGroup())  # clears content, removing the pointer normally doens't work? Itll just reappear later
     
 class PointerRange:
     """
@@ -301,16 +259,16 @@ class PointerRange:
         self.start = start.value if isinstance(start,VisualElement) else start
         self.stop = stop.value if isinstance(stop,VisualElement) else stop
         self.step = step.value if isinstance(step,VisualElement) else step
-        print(f"Start {self.start}; Stop {self.stop}; Step {self.step}")
         self.master = master
         self.label = label
         self._current = start.value if isinstance(start,VisualElement) else start
         self.direction = kwargs.get("direction",UP)
+        
         self._started = False #Checks if iteration ahs started yet(logic in __next__)
         # self.pointer:Pointer = Pointer(value=start,master=master,label=label,direction=self.direction)
-        print("is in play?",self.master.scene.in_play)
+        color = kwargs.get("color",YELLOW)
         if (step > 0 and start < stop) or (step < 0 and start > stop): #Checks if the direction is valid
-            self.pointer:Pointer = Pointer(value=start,master=master,label=label,direction=self.direction)
+            self.pointer:Pointer = Pointer(value=start,master=master,label=label,direction=self.direction,color=color)
         else:
             self.pointer = None
             
@@ -326,7 +284,6 @@ class PointerRange:
         #Just yield the pointer on first iteration, since smth like range(0,5,10) would still return the start if valid direction
         if not self._started: 
             if getattr(self.pointer, "body", None) is None and self.master:
-                print(f"creating pointer '{self.label}' now...")
                 self.master.play(self.pointer.create())
                 
             self._started = True
@@ -335,32 +292,21 @@ class PointerRange:
         
         old_index = self._current
         next_index = old_index + self.step
-        
-        print(f"Next index of {self.label}: {next_index}")
-        if (self.step > 0 and next_index >= self.stop) or (self.step < 0 and next_index <= self.stop):
-            print(f"stopping {self.label} at {old_index}")
-          
-            if self.master and hasattr(self.master, "play"):
-                self.master.play(FadeOut(self.pointer))
 
-            self.pointer.clear_updaters()
-            self.pointer.become(VGroup())  # clears content, removing the pointer normally doens't work? Itll just reappear later
+        if (self.step > 0 and next_index >= self.stop) or (self.step < 0 and next_index <= self.stop): #Cant iterate further
+          
+            self.pointer.destroy()
             self.pointer = None
-           
             raise StopIteration
 
-        # old_index = self.pointer.value
-        # new_index = next_index
         self._current = next_index
 
         if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            print("Pointer Type: ",type(self.pointer))
             anim = self.pointer.move_pointer(old_index=old_index, new_index=next_index)
-            # self.pointer.value = self._current
             self.master.play(anim)
-            self.pointer.value = next_index
 
-        # return self.pointer
+
+
         return self._current
     
     
