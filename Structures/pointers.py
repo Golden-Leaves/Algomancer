@@ -100,16 +100,21 @@ class Pointer(VisualElement):
     def __le__(self, other): return self._compare(other=other,op="<=")
     def __ge__(self, other): return self._compare(other=other,op=">=")
     
-    def _apply_pointer_op(self, other: int, op: str):
+    def _apply_pointer_op(self, other: int, op: str, mutate: bool = False, other_on_left: bool = False):
         if not isinstance(other, int):
             return NotImplemented
         operation = get_operation(op=op)
-        new_index = operation(self.value, other)
+        new_index = operation(other, self.value) if other_on_left else operation(self.value, other)
 
-        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anim = self.move_pointer(old_index=self.value, new_index=new_index)
-            self.master.play(anim)
+        if mutate: #For self-assignement operations
+            if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
+                anim = self.move_pointer(old_index=self.value, new_index=new_index)
+                self.master.play(anim)
+                self.value = new_index
+                return self
+            self.value = new_index
             return self
+
         return new_index
        
     def __add__(self, other: int):
@@ -137,43 +142,54 @@ class Pointer(VisualElement):
         return self._apply_pointer_op(other, "%")
 
 
+    def __radd__(self, other: int):
+        return self._apply_pointer_op(other, "+", other_on_left=True)
+
+    def __rsub__(self, other: int):
+        return self._apply_pointer_op(other, "-", other_on_left=True)
+
+    def __rmul__(self, other: int):
+        return self._apply_pointer_op(other, "*", other_on_left=True)
+
+    def __rfloordiv__(self, other: int):
+        if not isinstance(other, int):
+            return NotImplemented
+        if self.value == 0:
+            raise ZeroDivisionError("Pointer floordiv by zero")
+        return self._apply_pointer_op(other, "//", other_on_left=True)
+
+    def __rmod__(self, other: int):
+        if not isinstance(other, int):
+            return NotImplemented
+        if self.value == 0:
+            raise ZeroDivisionError("Pointer modulo by zero")
+        return self._apply_pointer_op(other, "%", other_on_left=True)
+
 
     def __iadd__(self, other: int):
-        result = self._apply_pointer_op(other, "+")
+        result = self._apply_pointer_op(other, "+", mutate=True)
         if result is NotImplemented:
             return NotImplemented
-        if isinstance(result, type(self)):
-            return result
-        self.value = result
         return result
 
     def __isub__(self, other: int):
-        result = self._apply_pointer_op(other, "-")
+        result = self._apply_pointer_op(other, "-", mutate=True)
         if result is NotImplemented:
             return NotImplemented
-        if isinstance(result, type(self)):
-            return result
-        self.value = result
         return result
 
 
     def __imul__(self, other: int):
-        result = self._apply_pointer_op(other, "*")
+        result = self._apply_pointer_op(other, "*", mutate=True)
         if result is NotImplemented:
             return NotImplemented
-        if isinstance(result, type(self)):
-            return result
-        self.value = result
         return result
 
 
     def __itruediv__(self, other: int):
-        result = self._apply_pointer_op(other, "/")
+        result = self._apply_pointer_op(other, "/", mutate=True)
         if result is NotImplemented:
             return NotImplemented
-        if isinstance(result, type(self)):
-            return result
-        self.value = result
         return result
 
 
@@ -182,10 +198,9 @@ class Pointer(VisualElement):
             return NotImplemented
         if other == 0:
             raise ZeroDivisionError("Pointer floordiv by zero")
-        result = self._apply_pointer_op(other, "//")
-        if isinstance(result, type(self)):
-            return result
-        self.value = result
+        result = self._apply_pointer_op(other, "//", mutate=True)
+        if result is NotImplemented:
+            return NotImplemented
         return result
     
         
