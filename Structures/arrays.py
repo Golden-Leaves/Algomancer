@@ -24,6 +24,7 @@ class Cell(VisualElement):
 
 
         text_scale = 0.4 * cell_height / MathTex("0").height #38% of cell area
+        self._base_text_color = text_color
         self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
         self.text.move_to(self.get_center())
         self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
@@ -33,6 +34,12 @@ class Cell(VisualElement):
 
         
         
+    
+    def restore_visual_state(self):
+        """Reset text style after animations that might dim it."""
+        if hasattr(self, "text"):
+            self.text.set_color(self._base_text_color)
+            self.text.set_opacity(1.0)
     
 class VisualArray(VisualStructure):
     def __init__(self,data:any,scene:AlgoScene|None=None,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,
@@ -107,7 +114,7 @@ class VisualArray(VisualStructure):
                 scale =  1.15
                 if self.scene and is_animating():
                     self.play(Succession(self.highlight(cell=cell,color=GREEN,runtime=0.2),
-                                        Indicate(cell,color=GREEN,scale_factor=scale),
+                                        self.indicate(cell=cell,color=GREEN,scale_factor=scale,runtime=0.2),
                                         Wait(0.1),
                                         self.unhighlight(cell=cell,runtime=0.2)
                                         ))
@@ -200,7 +207,7 @@ class VisualArray(VisualStructure):
     def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True,scalar=False) -> Succession:
         if scalar:
             return Wait(0)
-            
+        
         cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2) 
         color = GREEN if result else RED
         scale = 1.08 if result else 1.15  # slightly larger pulse for "swap"   
@@ -211,8 +218,8 @@ class VisualArray(VisualStructure):
             self.highlight(cell=cell_2,color=color,runtime=0.2)
         )  
         pulse = AnimationGroup(
-            Indicate(cell_1,scale_factor=scale,color=color),
-            Indicate(cell_2,color=color,scale_factor=scale),
+            self.indicate(cell=cell_1,scale_factor=scale,color=color,runtime=0.2),
+            self.indicate(cell=cell_2,scale_factor=scale,color=color,runtime=0.2),
             lag_ratio=0.1
         )
         unhighlight = AnimationGroup(
@@ -391,20 +398,24 @@ class VisualArray(VisualStructure):
         
         if not self._instantialized: #If array hasn't been created yet
             print("Instantializing stuff...")
-            for idx,text in enumerate(self._raw_data):
-                    
-                    cell = Cell(value=text,master=self,cell_width=self.cell_width,cell_height=self.cell_height,
-                                text_color=self.text_color,rounded=self.rounded)
-                    if idx == 0:
-                        cell.move_to(self.pos)
-                        cell.master = self
-                    else:
-                        cell.next_to(self.elements[idx - 1],RIGHT,buff=0)
-                        
-                    
-                    self.add(cell)          
-                    self.elements.append(cell)
+            for text in self._raw_data:
+                cell = Cell(
+                    value=text,
+                    master=self,
+                    cell_width=self.cell_width,
+                    cell_height=self.cell_height,
+                    text_color=self.text_color,
+                    rounded=self.rounded,
+                )
+                self.add(cell)
+                self.elements.append(cell)
             self._instantialized = True
+            if self.elements:
+                cell_width = float(self.cell_width)
+                center_shift = (len(self.elements) - 1) / 2
+                for idx, cell in enumerate(self.elements):
+                    offset = (idx - center_shift) * cell_width
+                    cell.move_to(self.pos + RIGHT * offset)
             self.move_to(self.pos)
      
         if cells is None:
