@@ -70,6 +70,12 @@ class VisualStructure(VGroup):
                     if not isinstance(anim,Animation):
                         raise TypeError(f"Unexpected {type(anim)} passed to play()")
                     scene.play(anim, **kwargs)
+            for element in self.elements:
+                if element.master is not self:
+                    element.master = self
+                restore_state = getattr(element, "restore_visual_state", None)
+                if callable(restore_state):
+                    restore_state()
                     
     def get_element(self, cell_or_index:VisualElement|int) -> VisualElement:
         """Error handling opps, can also be used to retrieve an element with an index"""
@@ -89,7 +95,7 @@ class VisualStructure(VGroup):
         elif isinstance(cell_or_index, VisualElement):
             if not any(c is cell_or_index for c in self.elements): #This is used because 'in' calls __eq__ -> Inf Recursion
                 raise ValueError(
-                    "Cell object does not belong to this VisualStructure."
+                    f"Cell object does not belong to this {self.__class__.__name__}."
                 )
             return cell_or_index
         
@@ -168,13 +174,25 @@ class VisualStructure(VGroup):
         if scene is not None:
             scene._trace.append(event)
 
-    def __getstate__(self):
-        state = dict(self.__dict__)
-        state["_scene_ref"] = None
-        return state
+    # def __getstate__(self): #Pickle guard(deepcopy)
+    #     state = dict(self.__dict__)
+    #     state["_scene_ref"] = None
+    #     return state
 
-    def __setstate__(self, state):
-        self.__dict__.update(state)
+    # def __setstate__(self, state):
+    #     self.__dict__.update(state)
+        
+    # def __deepcopy__(self, memo):
+    #   dup = self.copy()
+    #   #Restore the weak master reference (copy loses it for some reason)
+    #   dup.master = self.master
+    #   return dup
+    def copy(self): #OpenGL doenn't reuse cached mobjects(why is it so inefficient)
+      dup = super().copy()            
+      dup.master = self.master        # restore weakref
+      dup.value = copy.copy(self.value)
+      dup.label = copy.copy(self.label)
+      return dup
 
     @property
     def scene(self):
@@ -205,6 +223,14 @@ class VisualStructure(VGroup):
             comment=f"clear highlight cell[{cell_index}]",
         )
         return ApplyMethod(cell_obj.body.set_fill, BLACK,0.5, run_time=runtime)
+    
+    def indicate(self, cell:int|VisualElement, color=YELLOW, scale_factor=1.1, runtime=0.5) -> Indicate:
+        cell_obj: VisualElement = self.get_element(cell)
+        target = getattr(cell_obj, "body", cell_obj)
+        restore_state = getattr(cell_obj, "restore_visual_state", None)
+        if callable(restore_state):
+            restore_state()
+        return Indicate(target, color=color, scale_factor=scale_factor, run_time=runtime)
     
     def outline(self, cell:int|VisualElement, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
         cell_element: VisualElement = self.get_element(cell)
@@ -302,13 +328,15 @@ class VisualElement(VGroup):
             return True
         if _COMPARE_GUARD.get():
             return super().__eq__(other)
-        token = _COMPARE_GUARD.set(True) #OpenGL does some goofy comparison shi in .compare(), this is here to circumvent that
+        
+        token = _COMPARE_GUARD.set(True) #OpenGL does some goofy comparison shi in .compare(), this is here to short-circuit that
         other_value = other.value if hasattr(other,"value") else other
         operation = get_operation(op=op)
         result = operation(self.value,other_value)
-        # Log and visualize
+
         try:
-            self.master.log_event(_type="compare", other=other, result=result)
+            if self.master:
+                self.master.log_event(_type="compare", other=other, result=result)
             if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
                 
                 master_anim = self.master.compare(self, other, result=result)
@@ -383,24 +411,25 @@ class VisualElement(VGroup):
         operation = get_operation(op=op)
         result = operation(left_value,right_value)
         color = ARITHMETIC_COLOR_MAP[op]
+        if self.master:
+            self.master.log_event(_type=f"arithmetic-{op}", result=result)
 
-        self.master.log_event(_type=f"arithmetic-{op}", result=result)
-
-        if self.master.scene and is_animating() and not self.master.scene.in_play:
+        if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
             anims = []
             master_anim = AnimationGroup(
-            self.master.highlight(self,color=color, runtime=0.1),
-            Indicate(self, color=color, scale_factor=SCALE_MAP[op]),
-            # self.master.set_fill(opacity=0),
-            self.master.unhighlight(self,runtime=0.15)
-        )
+                self.master.highlight(self, color=color, runtime=0.1),
+                self.master.indicate(self, color=color, scale_factor=SCALE_MAP[op], runtime=0.2),
+                # self.master.set_fill(opacity=0),
+                self.master.unhighlight(self, runtime=0.15),
+            )
             anims.append(master_anim)
             if isinstance(other,VisualElement) and getattr(other,"master",None) is not None : #Plays an animation if other is an element
                 other_anim = AnimationGroup(
-                other.master.highlight(self,color=color, runtime=0.1),
-                Indicate(other, color=color, scale_factor=SCALE_MAP[op]),
-                # self.master.set_fill(opacity=0),
-                other.master.unhighlight(self,runtime=0.15))
+                    other.master.highlight(self, color=color, runtime=0.1),
+                    other.master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.2),
+                    # self.master.set_fill(opacity=0),
+                    other.master.unhighlight(self, runtime=0.15),
+                )
                 anims.append(other_anim)
             
             self.master.play(AnimationGroup(*anims))
