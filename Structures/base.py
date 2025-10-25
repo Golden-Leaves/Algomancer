@@ -48,15 +48,16 @@ class VisualStructure(VGroup):
         self._trace = []
         if scene is not None:
             scene.register_structure(self)
+        
             
     # def __hash__(self): #Python removes this when you override comparasions(__eq__,..) for whatever reason
     #     return id(self)
     
- 
- 
+
+        
     def play(self, *anims, **kwargs):
             """Recursive play: handles single or multiple animations\n
-            Can accept either an array or multiple animations
+            Can accept either an array or multiple comma-seperated animations
             """
     
             
@@ -70,12 +71,19 @@ class VisualStructure(VGroup):
                     if not isinstance(anim,Animation):
                         raise TypeError(f"Unexpected {type(anim)} passed to play()")
                     scene.play(anim, **kwargs)
-            for element in self.elements:
-                if element.master is not self:
+                    
+            for element in self.elements: 
+                if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
                     element.master = self
-                restore_state = getattr(element, "restore_visual_state", None)
-                if callable(restore_state):
-                    restore_state()
+                body = getattr(element, "body", None)
+                text = getattr(element, "text", None)
+                if body is not None and text is not None: #Brings the text to the front yet again
+                    try:
+                        text.set_opacity(1.0)
+                        text.z_index = max(getattr(body, "z_index", 0) + 1, getattr(text, "z_index", 1))
+                        text.move_to(body.get_center())
+                    except Exception:
+                        pass
                     
     def get_element(self, cell_or_index:VisualElement|int) -> VisualElement:
         """Error handling opps, can also be used to retrieve an element with an index"""
@@ -174,25 +182,6 @@ class VisualStructure(VGroup):
         if scene is not None:
             scene._trace.append(event)
 
-    # def __getstate__(self): #Pickle guard(deepcopy)
-    #     state = dict(self.__dict__)
-    #     state["_scene_ref"] = None
-    #     return state
-
-    # def __setstate__(self, state):
-    #     self.__dict__.update(state)
-        
-    # def __deepcopy__(self, memo):
-    #   dup = self.copy()
-    #   #Restore the weak master reference (copy loses it for some reason)
-    #   dup.master = self.master
-    #   return dup
-    def copy(self): #OpenGL doenn't reuse cached mobjects(why is it so inefficient)
-      dup = super().copy()            
-      dup.master = self.master        # restore weakref
-      dup.value = copy.copy(self.value)
-      dup.label = copy.copy(self.label)
-      return dup
 
     @property
     def scene(self):
@@ -202,59 +191,71 @@ class VisualStructure(VGroup):
     def scene(self, new_scene):
         self._scene_ref = weakref.ref(new_scene) if new_scene else None
         
-    def highlight(self, cell:int|VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        cell_obj: VisualElement = self.get_element(cell)
-        cell_index = self.get_index(cell_obj)
+    def highlight(self, element:int|VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
+        element_obj: VisualElement = self.get_element(element)
+        element_index = self.get_index(element_obj)
         self.log_event(
             _type="highlight",
-            indices=[cell_index],
+            indices=[element_index],
             value={"color": color, "opacity": opacity},
-            comment=f"highlight cell[{cell_index}]",
+            comment=f"highlight element[{element_index}]",
         )
-        return ApplyMethod(cell_obj.body.set_fill, color, opacity, run_time=runtime)
+        return ApplyMethod(element_obj.body.set_fill, color, opacity, run_time=runtime)
 
-    def unhighlight(self, cell:int|VisualElement, runtime=0.5) -> ApplyMethod: 
-        cell_obj: VisualElement = self.get_element(cell)
-        cell_index = self.get_index(cell_obj)
+    def unhighlight(self, element:int|VisualElement, runtime=0.5) -> ApplyMethod: 
+        element_obj: VisualElement = self.get_element(element)
+        element_index = self.get_index(element_obj)
         self.log_event(
             _type="unhighlight",
-            indices=[cell_index],
+            indices=[element_index],
             value={"color": BLACK, "opacity": 0.5},
-            comment=f"clear highlight cell[{cell_index}]",
+            comment=f"clear highlight element[{element_index}]",
         )
-        return ApplyMethod(cell_obj.body.set_fill, BLACK,0.5, run_time=runtime)
+        return ApplyMethod(element_obj.body.set_fill, BLACK,0.5, run_time=runtime)
     
-    def indicate(self, cell:int|VisualElement, color=YELLOW, scale_factor=1.1, runtime=0.5) -> Indicate:
-        cell_obj: VisualElement = self.get_element(cell)
-        target = getattr(cell_obj, "body", cell_obj)
-        restore_state = getattr(cell_obj, "restore_visual_state", None)
-        if callable(restore_state):
-            restore_state()
-        return Indicate(target, color=color, scale_factor=scale_factor, run_time=runtime)
+    def indicate(self, element:int|VisualElement, color=YELLOW, scale_factor=1.1, runtime=0.5) -> Animation:
+        """
+        Makes an element "pulse"
+        """
+        element_obj: VisualElement = self.get_element(element)
+        target = getattr(element_obj, "body", element_obj)
+       
+        pulse = Indicate(target, color=color, scale_factor=scale_factor, run_time=runtime)
+
+        #Restore original stoke info
+        finalize = Wait(0)
+        _orig_finish = finalize.finish
+
+        def _finish_restore():
+            _orig_finish()
+            self.highlight(element=element,color=BLACK,runtime=0)
+
+        finalize.finish = _finish_restore
+        return Succession(pulse, finalize)
     
-    def outline(self, cell:int|VisualElement, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
-        cell_element: VisualElement = self.get_element(cell)
-        cell_obj: Rectangle = cell_element.body
-        cell_index = self.get_index(cell_element)
+    def outline(self, element:int|VisualElement, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
+        element_obj: VisualElement = self.get_element(element)
+        element_body: Rectangle = element_obj.body
+        element_index = self.get_index(element_obj)
         self.log_event(
             _type="outline",
-            indices=[cell_index],
+            indices=[element_index],
             value={"color": color, "width": width},
-            comment=f"outline cell[{cell_index}]",
+            comment=f"outline element[{element_index}]",
         )
-        return ApplyMethod(cell_obj.set_stroke, color, width, 1.0, run_time=runtime)
+        return ApplyMethod(element_body.set_stroke, color, width, 1.0, run_time=runtime)
 
-    def unoutline(self, cell:int|VisualElement, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
-        cell_element: VisualElement = self.get_element(cell)
-        cell_obj: Rectangle = cell_element.body
-        cell_index = self.get_index(cell_element)
+    def unoutline(self, element:int|VisualElement, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
+        element_obj: VisualElement = self.get_element(element)
+        element_body: Rectangle = element_obj.body
+        element_index = self.get_index(element_obj)
         self.log_event(
             _type="unoutline",
-            indices=[cell_index],
+            indices=[element_index],
             value={"color": color, "width": width},
-            comment=f"clear outline cell[{cell_index}]",
+            comment=f"clear outline element[{element_index}]",
         )
-        return ApplyMethod(cell_obj.set_stroke, color, width, 1.0, run_time=runtime)
+        return ApplyMethod(element_body.set_stroke, color, width, 1.0, run_time=runtime)
 class VisualElement(VGroup):
     r"""Fundamental visual building-block managed by a :class:`VisualStructure`.
 
@@ -317,8 +318,12 @@ class VisualElement(VGroup):
     
     def __hash__(self):
         return id(self)
-
-
+    
+    def restore_visual_state(self):
+        """Reset text style after animations that might dim it."""
+        if hasattr(self, "text"):
+            self.text.set_color(self._base_text_color)
+            self.text.set_opacity(1.0)
     
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
@@ -329,7 +334,7 @@ class VisualElement(VGroup):
         if _COMPARE_GUARD.get():
             return super().__eq__(other)
         
-        token = _COMPARE_GUARD.set(True) #OpenGL does some goofy comparison shi in .compare(), this is here to short-circuit that
+        token = _COMPARE_GUARD.set(True) #OpenGL does some goofy comparison shi tin .compare(), this is here to short-circuit that
         other_value = other.value if hasattr(other,"value") else other
         operation = get_operation(op=op)
         result = operation(self.value,other_value)
@@ -419,7 +424,6 @@ class VisualElement(VGroup):
             master_anim = AnimationGroup(
                 self.master.highlight(self, color=color, runtime=0.1),
                 self.master.indicate(self, color=color, scale_factor=SCALE_MAP[op], runtime=0.2),
-                # self.master.set_fill(opacity=0),
                 self.master.unhighlight(self, runtime=0.15),
             )
             anims.append(master_anim)
@@ -427,7 +431,6 @@ class VisualElement(VGroup):
                 other_anim = AnimationGroup(
                     other.master.highlight(self, color=color, runtime=0.1),
                     other.master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.2),
-                    # self.master.set_fill(opacity=0),
                     other.master.unhighlight(self, runtime=0.15),
                 )
                 anims.append(other_anim)
