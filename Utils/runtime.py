@@ -6,10 +6,21 @@ import sys
 import weakref
 import numpy as np
 from typing import TYPE_CHECKING
-
+from screeninfo import get_monitors
+from Utils.logging_config import setup_logging
 if TYPE_CHECKING:
     from Structures.base import VisualStructure
-    
+
+def compute_window_size(scale: float = 0.75) -> tuple[int, int]:
+      monitor = get_monitors()[0]  #primary display
+      width = int(monitor.width * scale)
+      height = int(monitor.height * scale)
+      return width, height
+
+config.pixel_width = 1920
+config.pixel_height = 1080
+config.window_size = compute_window_size(0.75)  #75% of the screen
+config.samples=1
 ANIMATION_CONTEXT = contextvars.ContextVar("ANIMATION_CONTEXT", default=False) 
 CURRENT_LINE = contextvars.ContextVar("CURRENT_LINE", default=None)
 @contextlib.contextmanager
@@ -28,7 +39,7 @@ def animation_context():
         sys.settrace(tracer)
         yield  # "Pause" and let the user do whatever
     finally:
-        sys.settrace(previous_trace)  # Resets tracer state
+        sys.settrace(previous_trace)  #Resets tracer state
         ANIMATION_CONTEXT.reset(token)
         CURRENT_LINE.set(None)
         
@@ -38,10 +49,11 @@ def is_animating() -> bool:
     return ANIMATION_CONTEXT.get()
 
 class AlgoScene(Scene):
-    """Scene subclass that knows when it's playing an animation."""
+    """Scene subclass that tracks play state, registered structures, and drag-scaling."""
     
     _inside_play_call = False
     def __init__(self, renderer = None, camera_class = None, always_update_mobjects = False, random_seed = None, skip_animations = False):
+        self.logger = setup_logging(logger_name=__name__)
         super().__init__(renderer, camera_class, always_update_mobjects, random_seed, skip_animations)
         self._trace = []
         self._structures:weakref.WeakValueDictionary[int,VisualStructure] = weakref.WeakValueDictionary()
@@ -96,20 +108,7 @@ class AlgoScene(Scene):
             "base":base,
             "scale":1.0 #structure's current scale,because we want to scale off the original size
         }
-        
-    # def _update_drag(self,point):
-    #     state = self._active_structure
-    #     if not state: 
-    #         return
-    #     structure = state["structure"]
-    #     cursor_vec = point - state["origin"]
-    #     projected_total = max(0.1,np.dot(cursor_vec,state["axis"])) #structure's new "size", clamping so you cant make it disappear
-    #     scale_factor = projected_total / state["base"]
-    #     #Assume current scale is 2.0x, and since projected_total is based on the "base", it could be stuff like 2.5x
-    #     #We want to scale off the original size, so we do new_scale / current_scale
-    #     incremental = scale_factor / state["scale"]
-    #     structure.scale(incremental,about_point=state["origin"])
-    #     state["scale"] = scale_factor
+    
     
     def _update_drag(self,point):
         """Adjust the active structure's scale based on the current cursor position."""
@@ -147,15 +146,7 @@ class AlgoScene(Scene):
         if self._active_structure:
             self._active_structure = None
         
-    # def on_mouse_press(self, point, button, modifiers):
-    #     from pyglet.window import mouse
-    #     if  button == mouse.LEFT:
-    #         structure = self.get_structure_under_cursor(point=point)
-    #         print("Is there a structure?: ",structure)
-    #         if structure is not None:
-    #             self._start_drag(structure=structure,point=point)
-    #     # return super().on_mouse_press(point=point,button=button,modifiers=modifiers)
-            
+
     def on_mouse_drag(self, point, d_point, buttons, modifiers):
         from pyglet.window import mouse
         draggable = False
@@ -169,12 +160,6 @@ class AlgoScene(Scene):
         return None
     
     
-    # def on_mouse_release(self, point, button, modifiers):
-    #     from pyglet.window import mouse
-    #     print("Releasing mouse")
-    #     if button == mouse.LEFT:
-    #         self._end_drag()
-    #     return super().on_mouse_release(point=point, button=button, modifiers=modifiers)
     
         
     
