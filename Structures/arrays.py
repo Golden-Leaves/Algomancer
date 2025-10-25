@@ -10,24 +10,27 @@ BRIGHT_GREEN = "#00FF00"
     
 class Cell(VisualElement):
     def __init__(self, value:any,master:VisualStructure,
-                cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,**kwargs):
+                cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,border=True,**kwargs):
 
         self.rounded = rounded
         corner_radius = 0.3 if rounded else 0
         self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
                 Rectangle(width=cell_width, height=cell_height))
         self.body.set_fill(BLACK, opacity=0.5)
+        if not border:
+            self.body.set_stroke(opacity=0)
         self.value = value
         super().__init__(body=self.body,master=master,value=self.value,**kwargs)
 
         
 
 
-        text_scale = 0.4 * cell_height / MathTex("0").height #38% of cell area
+        text_scale = 0.4 * cell_height / Integer(0).height #38% of cell area
         self._base_text_color = text_color
-        self.text = MathTex(str(value)).set_color(text_color).scale(text_scale)
-        self.text.move_to(self.get_center())
-        self.text.add_updater(lambda m: m.move_to(self.body.get_center()))
+        self.text = Integer(value).set_color(text_color).scale(text_scale)
+        self.text.move_to(self.body.get_center())
+        # Robust updater that binds to this instance's body at definition time
+        self.text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
         self.body.z_index = 0
         self.text.z_index = 1
         self.add(self.text,self.body) #The order matters lol
@@ -40,9 +43,30 @@ class Cell(VisualElement):
         if hasattr(self, "text"):
             self.text.set_color(self._base_text_color)
             self.text.set_opacity(1.0)
+
+    # Ensure copies keep a valid text→body tracking updater
+    def copy(self):
+        clone = super().copy()
+        if hasattr(clone, "text") and hasattr(clone, "body"):
+            try:
+                clone.text.clear_updaters()
+            except Exception:
+                pass
+            clone.text.add_updater(lambda m, body=clone.body: m.move_to(body.get_center()))
+        return clone
+
+    def deepcopy(self):
+        clone = super().deepcopy()
+        if hasattr(clone, "text") and hasattr(clone, "body"):
+            try:
+                clone.text.clear_updaters()
+            except Exception:
+                pass
+            clone.text.add_updater(lambda m, body=clone.body: m.move_to(body.get_center()))
+        return clone
     
 class VisualArray(VisualStructure):
-    def __init__(self,data:any,scene:AlgoScene|None=None,cell_width:int=1,cell_height:int=1,text_color:ManimColor=WHITE,
+    def __init__(self,data:any,scene:AlgoScene|None=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
                 label:str=None,
                 **kwargs):
         """
@@ -54,8 +78,10 @@ class VisualArray(VisualStructure):
             The initial values to populate the array with.
         scene : Scene
             The active Manim Scene the array belongs to(pass self here)
-        cell_width : float, optional
-            The side length of each square `Cell`
+        element_width : float, optional
+            Width for each rendered element.
+        element_height : float, optional
+            Height for each rendered element.
         text_color : Color, optional
             The color of the text inside each cell
         **kwargs :
@@ -70,14 +96,17 @@ class VisualArray(VisualStructure):
         """
        
         self._raw_data = data #The original structure the user passed in, maybe don't touch this beyond create()
+        self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)
         self.rounded = kwargs.pop("rounded",False)
         self.text_color = text_color
-        # self.elements:list[Cell] = []
-        self.cell_width = cell_width
-        self.cell_height = cell_height
+        self.element_width = element_width
+        self.element_height = element_height
+        self._layout_proxy: Mobject | None = None
         self._instantialized = False
         self._iter_pointer = None
+        
+
 
             
     def __getitem__(self, index):
@@ -105,18 +134,18 @@ class VisualArray(VisualStructure):
         for i in range(len(self)):
             cell:Cell = self.get_element(i)
             if self.scene and is_animating() and not self.scene.in_play: #Highlight cells that are looped through
-                    animation = Succession(self.highlight(cell=cell,color=YELLOW,runtime=0.15),
+                    animation = Succession(self.highlight(element=cell,color=YELLOW,runtime=0.15),
                                         Wait(0.1),
-                                        self.unhighlight(cell=cell,runtime=0.1),)
+                                        self.unhighlight(element=cell,runtime=0.1),)
                     self.play(animation)
             if target_val == cell.value:
                 result = True
                 scale =  1.15
                 if self.scene and is_animating():
-                    self.play(Succession(self.highlight(cell=cell,color=GREEN,runtime=0.2),
-                                        self.indicate(cell=cell,color=GREEN,scale_factor=scale,runtime=0.2),
+                    self.play(Succession(self.highlight(element=cell,color=GREEN,runtime=0.2),
+                                        self.indicate(element=cell,color=GREEN,scale_factor=scale,runtime=0.2),
                                         Wait(0.1),
-                                        self.unhighlight(cell=cell,runtime=0.2)
+                                        self.unhighlight(element=cell,runtime=0.2)
                                         ))
                 break
         self.log_event(_type="contains",value=value,result=result,comment=f"Find value {value} in array")
@@ -126,22 +155,6 @@ class VisualArray(VisualStructure):
         self._iter_index = 0 #Index of the NEXT iteration
         return self
 
-    # def __next__(self):
-    #     if self._iter_index >= len(self):
-    #         raise StopIteration
-
-    #     cell: Cell = self.elements[self._iter_index]
-
-    #     if self.scene and is_animating() and not self.scene.in_play:
-    #         anim = Succession(
-    #             self.highlight(cell=cell, color=YELLOW, runtime=0.15),
-    #             Wait(0.1),
-    #             self.unhighlight(cell=cell, runtime=0.1),
-    #         )
-    #         self.play(anim)
-
-    #     self._iter_index += 1
-    #     return cell
     def __next__(self):
         
         if not self._iter_pointer:
@@ -188,17 +201,15 @@ class VisualArray(VisualStructure):
           
     def set_value(self,index:int|Cell,value:any) -> Succession|Transform:
         def build():
-            # if isinstance(value,VisualElement) and getattr(value,"master",None) is not None:
-            #     return self.swap(idx_1=index,idx_2=value.master.get_element(value))
-            
+    
             element_value = value.value if hasattr(value,"value") else value
             print(element_value)
             cell:Cell = self.get_element(index)
             print("Before Transform:", cell, "master:", cell.master)
-            text_scale = 0.45 * self.cell_height / MathTex("0").height
-            new_text = MathTex(str(element_value)).set_color(self.text_color).scale(text_scale)
-            new_text.move_to(cell.get_center())
-            new_text.add_updater(lambda m: m.move_to(cell.get_center()))
+            text_scale = 0.45 * self.element_height / Integer(0).height
+            new_text = Integer(element_value).set_color(self.text_color).scale(text_scale)
+            new_text.move_to(cell.body.get_center())
+            new_text.add_updater(lambda m, body=cell.body: m.move_to(body.get_center()))
             cell.value = element_value
         
             return Transform(cell.text,new_text,run_time=0.5)
@@ -214,17 +225,17 @@ class VisualArray(VisualStructure):
         
 
         highlight = AnimationGroup(
-            self.highlight(cell=cell_1,color=color,runtime=0.2),
-            self.highlight(cell=cell_2,color=color,runtime=0.2)
+            self.highlight(element=cell_1,color=color,runtime=0.2),
+            self.highlight(element=cell_2,color=color,runtime=0.2)
         )  
         pulse = AnimationGroup(
-            self.indicate(cell=cell_1,scale_factor=scale,color=color,runtime=0.2),
-            self.indicate(cell=cell_2,scale_factor=scale,color=color,runtime=0.2),
+            self.indicate(element=cell_1,scale_factor=scale,color=color,runtime=0.2),
+            self.indicate(element=cell_2,scale_factor=scale,color=color,runtime=0.2),
             lag_ratio=0.1
         )
         unhighlight = AnimationGroup(
-            self.unhighlight(cell=cell_1,runtime=0.2),
-            self.unhighlight(cell=cell_2,runtime=0.2)
+            self.unhighlight(element=cell_1,runtime=0.2),
+            self.unhighlight(element=cell_2,runtime=0.2)
         )
         return Succession(highlight,pulse,Wait(0.1),unhighlight)
 
@@ -286,6 +297,9 @@ class VisualArray(VisualStructure):
     def move_cell(self,cell:int|Cell,target_pos,runtime=1,direction="up") -> Succession:
         """Moves specified cell to desired position"""
         cell:Cell = self.get_element(cell)
+        #Freeze vectors so later moves don't affect targets
+        start = np.array(cell.center, dtype=float).copy()
+        target_pos = np.array(target_pos, dtype=float).copy()
             
         
             
@@ -300,15 +314,14 @@ class VisualArray(VisualStructure):
 
         # hop_pos = start + shift_vec * (cell.body_height + lift) #Makes it go up by height
         hop_pos = get_offset_position(element=cell,direction=UP)
-        #Post-hop
-        x_shift = np.array([target_pos[0],hop_pos[1],target_pos[2]])
-        y_shift = target_pos
-        
+
+        x_shift = np.array([target_pos[0], hop_pos[1], start[2]])
+        y_shift = np.array([target_pos[0], target_pos[1], start[2]])
+
         cell_shift = Succession(
             ApplyMethod(cell.move_to, hop_pos),
             ApplyMethod(cell.move_to, x_shift),
             ApplyMethod(cell.move_to, y_shift),
-            run_time=2
         )
         return cell_shift
     
@@ -317,7 +330,13 @@ class VisualArray(VisualStructure):
     def append(self,data,runtime=0.5,recenter=True) -> None:
         if not self._instantialized:
             self.create()
-        cell = Cell(value=data,master=self,cell_width=self.cell_width)
+        cell = Cell(
+            value=data,
+            master=self,
+            cell_width=self.element_width,
+            cell_height=self.element_height,
+            border=self.border,
+        )
         last_cell:Cell = self.elements[-1] if self.elements else cell
         if self.elements:#If an array already exists
             right_side = last_cell.right
@@ -374,50 +393,82 @@ class VisualArray(VisualStructure):
         idx_1 = idx_1.master.get_index(idx_1) if isinstance(idx_1,VisualElement) else idx_1
         idx_2 = idx_2.master.get_index(idx_2) if isinstance(idx_2,VisualElement) else idx_2
 
-        pos_1 = cell_1.center 
-        pos_2 = cell_2.center
+        # Freeze absolute targets so they don't drift when the first move runs
+        pos_1 = np.array(cell_1.center, dtype=float).copy()
+        pos_2 = np.array(cell_2.center, dtype=float).copy()
 
         # (currently uses move_cell, future: move_element)
-        move_1 = self.move_cell(cell_1, target_pos=pos_2, runtime=runtime)
-        move_2 = self.move_cell(cell_2, target_pos=pos_1,runtime=runtime)
+        # # Keep text visible and above bodies during motion
+        # if hasattr(cell_1, "text"):
+        #     cell_1.text.set_opacity(1)
+        #     cell_1.text.z_index = max(getattr(cell_1.body, "z_index", 0) + 1, getattr(cell_1.text, "z_index", 1))
+        # if hasattr(cell_2, "text"):
+        #     cell_2.text.set_opacity(1)
+        #     cell_2.text.z_index = max(getattr(cell_2.body, "z_index", 0) + 1, getattr(cell_2.text, "z_index", 1))
 
-        self.elements[idx_1], self.elements[idx_2] = self.elements[idx_2], self.elements[idx_1]
+        move_1 = self.move_cell(cell_1, target_pos=pos_2.copy(), runtime=runtime)
+        move_2 = self.move_cell(cell_2, target_pos=pos_1.copy(), runtime=runtime)
 
-        return Succession(move_1,move_2,runtime=0.45)
-        # return Succession(Wait(0),AnimationGroup(move_1,move_2,lag_ratio=0.2))
+        # Defer the actual list swap until after animations complete to avoid
+        # mid-flight lookups snapping elements back to their old slots.
+        finalize = Wait(0)
+        original_finish = finalize.finish
+
+        def _finish_swap():
+            original_finish()
+            self.elements[idx_1], self.elements[idx_2] = self.elements[idx_2], self.elements[idx_1]
+
+        finalize.finish = _finish_swap
+
+        # return Succession(AnimationGroup(move_1, move_2, lag_ratio=0.2), finalize)
+        return Succession(move_1,move_2,finalize,runtime=runtime)
     
 
 
     def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
-        if not self.scene:
-            return None
-        if self.elements:
-            print("Array already created, skipping rebuild")
-            return Wait(1e-6)
-        
-        if not self._instantialized: #If array hasn't been created yet
-            print("Instantializing stuff...")
+        if not self._instantialized:  # instantiate cell geometry without animation
+            anchor = np.array(self.get_center())
+            if not np.allclose(anchor, 0):
+                self.pos = anchor
+                
             for text in self._raw_data:
                 cell = Cell(
                     value=text,
                     master=self,
-                    cell_width=self.cell_width,
-                    cell_height=self.cell_height,
+                    cell_width=self.element_width,
+                    cell_height=self.element_height,
                     text_color=self.text_color,
                     rounded=self.rounded,
+                    border=self.border,
                 )
                 self.add(cell)
                 self.elements.append(cell)
+                
+            for cell in self.elements:
+                cell.set_opacity(0)
             self._instantialized = True
+            
             if self.elements:
-                cell_width = float(self.cell_width)
+                element_width = float(self.element_width)
                 center_shift = (len(self.elements) - 1) / 2
                 for idx, cell in enumerate(self.elements):
-                    offset = (idx - center_shift) * cell_width
+                    offset = (idx - center_shift) * element_width
                     cell.move_to(self.pos + RIGHT * offset)
             self.move_to(self.pos)
-     
+            self.set_opacity(0)  # keep geometry hidden until animated
+            
+            if not self.scene:
+                return None
+            # return Wait(1e-6)
+
+        if not self.scene:
+            return None
+
+        # Update stored anchor to reflect any external positioning (e.g., arrange/shift)
+        self.pos = np.array(self.get_center())
+        self.set_opacity(1)
+
         if cells is None:
             cells:list[Cell] = self.elements
         if not cells:
