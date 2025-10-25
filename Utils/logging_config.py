@@ -28,8 +28,11 @@ def setup_logging(logger_name: str = "algomancer", output: bool = True) -> loggi
             handlers=handlers,
             force=True,
         )
-        LOGGING_READY = True
+
     logger = logging.getLogger(logger_name)
+    if not LOGGING_READY:
+        logger.info("Algomancer run initialized…")
+        LOGGING_READY = True
     logger.info("=" * 60)
     logger.info("Run started for %s", logger_name)
     return logger
