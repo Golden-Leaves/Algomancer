@@ -3,11 +3,15 @@ from manim import *
 import numpy as np
 from Utils.utils import LazyAnimation, flatten_array, Event, resolve_value, get_operation
 from Utils.runtime import is_animating, AlgoScene, get_current_line_metadata
-from typing import Any
+from typing import Any, TYPE_CHECKING
+from pprint import pformat
 import contextvars
 import weakref
-
+if TYPE_CHECKING:
+    import logging
 _COMPARE_GUARD = contextvars.ContextVar("_COMPARE_GUARD", default=False)
+
+
 class VisualStructure(VGroup):
     """Base container for Algomancer data structures.
 
@@ -108,7 +112,9 @@ class VisualStructure(VGroup):
             return cell_or_index
         
         elif isinstance(cell_or_index, Pointer):
-            cell_or_index:Pointer = cell_or_index.value
+            index = cell_or_index.value
+            index = index if index >= 0 else index + len(self.elements)
+            return self.get_element(index)
         # Case 3: goofy input
         else:
             raise TypeError(
@@ -122,13 +128,13 @@ class VisualStructure(VGroup):
 
         if isinstance(element, int):
             # Why would you wanna pass an index in here???
-            if 0 <= element < len(elements):
+            if (0 <= element < len(elements)) or (-len(elements) <= element < len(elements)):#Negative indexing
                 return element
             else:
                 raise IndexError(f"Index {element} out of bounds for array of size {len(elements)}.")
 
         elif isinstance(element, VisualElement):
-            # manual identity comparison to avoid triggering __eq__()
+            #manual identity comparison to avoid triggering __eq__()
             for i, el in enumerate(elements):
                 if el is element:
                     return i
@@ -182,6 +188,35 @@ class VisualStructure(VGroup):
         if scene is not None:
             scene._trace.append(event)
 
+    def log_state(
+        self,
+        label: str = "state",
+        elements: list["VisualElement"] | None = None,
+        level: str = "debug",
+    ) -> None:
+        """Debug helper that logs the structure and its elements' visual state."""
+        logger = getattr(self, "logger", None)
+        if logger is None:
+            return
+        log_fn = getattr(logger, level.lower(), None) or logger.debug
+
+        struct_payload = {
+            "label": label,
+            "type": type(self).__name__,
+            "id": hex(id(self)),
+            "pos": np.array2string(self.get_center(), precision=3) if hasattr(self, "get_center") else None,
+            "z_index": getattr(self, "z_index", None),
+            "submobjects": [type(sm).__name__ for sm in self.submobjects],
+            "element_count": len(self.elements),
+        }
+        #Pretty print to put the attrbutes on seperate lines with indent
+        log_fn("structure.state %s\n%s", label, pformat(struct_payload, indent=2, width=120))
+
+        targets = elements if elements is not None else self.elements
+        for idx, element in enumerate(targets):
+            if isinstance(element, VisualElement):
+                element.master = element.master or self
+                element.log_state(label=f"{label}.element[{idx}]", level=level)
 
     @property
     def scene(self):
@@ -194,6 +229,8 @@ class VisualStructure(VGroup):
     def highlight(self, element:int|VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
         element_obj: VisualElement = self.get_element(element)
         element_index = self.get_index(element_obj)
+        if hasattr(self, "logger"):
+            self.logger.info("highlight idx=%s color=%s opacity=%s", element_index, color, opacity)
         self.log_event(
             _type="highlight",
             indices=[element_index],
@@ -205,6 +242,8 @@ class VisualStructure(VGroup):
     def unhighlight(self, element:int|VisualElement, runtime=0.5) -> ApplyMethod: 
         element_obj: VisualElement = self.get_element(element)
         element_index = self.get_index(element_obj)
+        if hasattr(self, "logger"):
+            self.logger.info("unhighlight idx=%s opacity=%s", element_index, 0.5)
         self.log_event(
             _type="unhighlight",
             indices=[element_index],
@@ -218,17 +257,29 @@ class VisualStructure(VGroup):
         Makes an element "pulse"
         """
         element_obj: VisualElement = self.get_element(element)
+        element_index = self.get_index(element_obj)
+        if hasattr(self, "logger"):
+            self.logger.info("indicate idx=%s color=%s scale=%s", element_index, color, scale_factor)
         target = getattr(element_obj, "body", element_obj)
-       
+
+        orig_color = target.get_fill_color() if hasattr(target, "get_fill_color") else None
+        orig_opacity = target.get_fill_opacity() if hasattr(target, "get_fill_opacity") else None
+
         pulse = Indicate(target, color=color, scale_factor=scale_factor, run_time=runtime)
 
-        #Restore original stoke info
         finalize = Wait(0)
         _orig_finish = finalize.finish
 
         def _finish_restore():
             _orig_finish()
-            self.highlight(element=element,color=BLACK,runtime=0)
+            if orig_color is not None and orig_opacity is not None:
+                target.set_fill(orig_color, opacity=orig_opacity)
+            else:
+                self.unhighlight(element=element, runtime=0)
+            target.refresh_after_setting()
+            text = getattr(element_obj, "text", None)
+            if text is not None:
+                text.refresh_after_setting()
 
         finalize.finish = _finish_restore
         return Succession(pulse, finalize)
@@ -237,6 +288,8 @@ class VisualStructure(VGroup):
         element_obj: VisualElement = self.get_element(element)
         element_body: Rectangle = element_obj.body
         element_index = self.get_index(element_obj)
+        if hasattr(self, "logger"):
+            self.logger.info("outline idx=%s color=%s width=%s", element_index, color, width)
         self.log_event(
             _type="outline",
             indices=[element_index],
@@ -249,6 +302,8 @@ class VisualStructure(VGroup):
         element_obj: VisualElement = self.get_element(element)
         element_body: Rectangle = element_obj.body
         element_index = self.get_index(element_obj)
+        if hasattr(self, "logger"):
+            self.logger.info("unoutline idx=%s color=%s width=%s", element_index, color, width)
         self.log_event(
             _type="unoutline",
             indices=[element_index],
@@ -318,13 +373,72 @@ class VisualElement(VGroup):
     
     def __hash__(self):
         return id(self)
-    
+        
     def restore_visual_state(self):
         """Reset text style after animations that might dim it."""
         if hasattr(self, "text"):
             self.text.set_color(self._base_text_color)
             self.text.set_opacity(1.0)
-    
+    @staticmethod
+    def get_mobject_state(mobj: Mobject | None) -> dict[str, Any]:
+        """Return a snapshot of a Manim mobject's visual attributes."""
+        if mobj is None:
+            return {}
+
+        state: dict[str, Any] = {
+            "type": type(mobj).__name__,
+            "z_index": getattr(mobj, "z_index", None),
+            "submobjects": [type(child).__name__ for child in getattr(mobj, "submobjects", [])],
+        }
+        if hasattr(mobj, "get_center"): state["center"] = np.array2string(mobj.get_center(), precision=3)
+        if hasattr(mobj, "get_x"):
+            state["x"], state["y"], state["z"] = (
+                round(float(mobj.get_x()), 3),
+                round(float(mobj.get_y()), 3),
+                round(float(mobj.get_z()), 3),
+            )
+        if hasattr(mobj, "get_width"):
+            state["width"], state["height"] = (
+                round(float(mobj.get_width()), 3),
+                round(float(mobj.get_height()), 3),
+            )
+        if hasattr(mobj, "get_fill_color"): state["fill_color"] = mobj.get_fill_color().to_hex()
+        if hasattr(mobj, "get_fill_opacity"): state["fill_opacity"] = float(mobj.get_fill_opacity())
+        if hasattr(mobj, "get_stroke_color"): state["stroke_color"] = mobj.get_stroke_color().to_hex()
+        if hasattr(mobj, "get_stroke_width"): state["stroke_width"] = float(mobj.get_stroke_width())
+        if hasattr(mobj, "get_stroke_opacity"):
+            state["stroke_opacity"] = float(mobj.get_stroke_opacity())
+        if hasattr(mobj, "get_opacity"): state["opacity"] = float(mobj.get_opacity())
+        return state
+
+    def log_state(self, label: str = "state", level: str = "debug") -> None:
+        """Emit a snapshot of this element's visual state to the structure logger."""
+        master:VisualStructure = self.master
+        logger:logging.Logger = getattr(master, "logger", None)
+        if logger is None:
+            return
+        log_fn = getattr(logger, level.lower(), None) or logger.debug
+
+        index = None
+        elements = getattr(master, "elements", None)
+        if elements:
+            for idx, el in enumerate(elements):
+                if el is self:
+                    index = idx
+                    break
+
+        payload = {
+            "label": label,
+            "index": index,
+            "value": getattr(self, "value", None),
+            "z_index": getattr(self, "z_index", None),
+            "opacity": getattr(self, "opacity", None),
+            "submobjects": [type(sm).__name__ for sm in self.submobjects],
+            "body": self.get_mobject_state(getattr(self, "body", None)),
+            "text": self.get_mobject_state(getattr(self, "text", None)),
+        }
+        log_fn("element.state %s\n%s", label, pformat(payload, indent=2, width=120))
+
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
         if resolve_value(other) is NotImplemented:
@@ -338,6 +452,29 @@ class VisualElement(VGroup):
         other_value = other.value if hasattr(other,"value") else other
         operation = get_operation(op=op)
         result = operation(self.value,other_value)
+
+        # DEBUG: concise visual state (index, text/body opacity, body z-index)
+        if getattr(self, "master", None) is not None and hasattr(self.master, "logger"):
+            idx = None
+            if hasattr(self.master, "elements") and self.master.elements is not None:
+                for i, el in enumerate(self.master.elements):
+                    if el is self:
+                        idx = i
+                        break
+            body = getattr(self, "body", None)
+            text = getattr(self, "text", None)
+            text_opacity = (
+                text.get_fill_opacity() if (text is not None and hasattr(text, "get_fill_opacity"))
+                else getattr(text, "fill_opacity", None)
+            )
+            body_opacity = getattr(body, "fill_opacity", None)
+            self.master.logger.debug(
+                "compare.visual idx=%s text_opacity=%s body_opacity=%s z_body=%s",
+                idx,
+                text_opacity,
+                body_opacity,
+                getattr(body, "z_index", None),
+            )
 
         try:
             if self.master:
@@ -416,6 +553,29 @@ class VisualElement(VGroup):
         operation = get_operation(op=op)
         result = operation(left_value,right_value)
         color = ARITHMETIC_COLOR_MAP[op]
+        # DEBUG: concise visual state for arithmetic op
+        if getattr(self, "master", None) is not None and hasattr(self.master, "logger"):
+            idx = None
+            if hasattr(self.master, "elements") and self.master.elements is not None:
+                for i, el in enumerate(self.master.elements):
+                    if el is self:
+                        idx = i
+                        break
+            body = getattr(self, "body", None)
+            text = getattr(self, "text", None)
+            text_opacity = (
+                text.get_fill_opacity() if (text is not None and hasattr(text, "get_fill_opacity"))
+                else getattr(text, "fill_opacity", None)
+            )
+            body_opacity = getattr(body, "fill_opacity", None)
+            self.master.logger.debug(
+                "arith.visual op=%s idx=%s text_opacity=%s body_opacity=%s z_body=%s",
+                op,
+                idx,
+                text_opacity,
+                body_opacity,
+                getattr(body, "z_index", None),
+            )
         if self.master:
             self.master.log_event(_type=f"arithmetic-{op}", result=result)
 
@@ -423,14 +583,14 @@ class VisualElement(VGroup):
             anims = []
             master_anim = AnimationGroup(
                 self.master.highlight(self, color=color, runtime=0.1),
-                self.master.indicate(self, color=color, scale_factor=SCALE_MAP[op], runtime=0.2),
+                self.master.indicate(self, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
                 self.master.unhighlight(self, runtime=0.15),
             )
             anims.append(master_anim)
             if isinstance(other,VisualElement) and getattr(other,"master",None) is not None : #Plays an animation if other is an element
                 other_anim = AnimationGroup(
                     other.master.highlight(self, color=color, runtime=0.1),
-                    other.master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.2),
+                    other.master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
                     other.master.unhighlight(self, runtime=0.15),
                 )
                 anims.append(other_anim)
