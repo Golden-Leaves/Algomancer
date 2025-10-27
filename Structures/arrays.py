@@ -5,6 +5,7 @@ from Utils.utils import LazyAnimation,get_offset_position
 from Structures.base import VisualStructure,VisualElement
 from Structures.pointers import Pointer
 from Utils.runtime import is_animating,AlgoScene
+from Utils.logging_config import setup_logging
 BRIGHT_GREEN = "#00FF00"
 
     
@@ -33,7 +34,8 @@ class Cell(VisualElement):
         self.text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
         self.body.z_index = 0
         self.text.z_index = 1
-        self.add(self.text,self.body) #The order matters lol
+        # Draw body first so the text renders above without inheriting opacity tint
+        self.add(self.body, self.text)
 
         
         
@@ -94,7 +96,8 @@ class VisualArray(VisualStructure):
               Coordinates for the array’s center if `pos` is not provided.  
               Defaults to ORIGIN on each axis.
         """
-       
+        self.logger = setup_logging(logger_name="algomancer.arrays")
+        self.logger.setLevel("DEBUG")
         self._raw_data = data #The original structure the user passed in, maybe don't touch this beyond create()
         self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)
@@ -105,7 +108,17 @@ class VisualArray(VisualStructure):
         self._layout_proxy: Mobject | None = None
         self._instantialized = False
         self._iter_pointer = None
-        
+        # Info log for structure initialization
+        self.logger.info(
+            "array.init len=%d w=%s h=%s rounded=%s border=%s label=%s pos=%s",
+            len(self._raw_data),
+            element_width,
+            element_height,
+            self.rounded,
+            self.border,
+            label,
+            np.array2string(self.pos, precision=2) if hasattr(self, "pos") else None,
+        )
 
 
             
@@ -212,6 +225,11 @@ class VisualArray(VisualStructure):
             new_text.add_updater(lambda m, body=cell.body: m.move_to(body.get_center()))
             cell.value = element_value
         
+            try:
+                idx_num = self.get_index(cell)
+            except Exception:
+                idx_num = index if isinstance(index, int) else None
+            self.logger.debug("array.set_value index=%s value=%s", idx_num, element_value)
             return Transform(cell.text,new_text,run_time=0.5)
         return LazyAnimation(builder=build)
     
@@ -220,6 +238,31 @@ class VisualArray(VisualStructure):
             return Wait(0)
         
         cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2) 
+        # DEBUG: concise visual state for both cells
+        i1 = self.get_index(cell_1)
+        i2 = self.get_index(cell_2)
+        b1, t1 = getattr(cell_1, "body", None), getattr(cell_1, "text", None)
+        b2, t2 = getattr(cell_2, "body", None), getattr(cell_2, "text", None)
+        self.logger.debug(
+            "array.compare.visual i=%s text_opacity=%s body_opacity=%s z_body=%s",
+            i1,
+            (
+                t1.get_fill_opacity() if (t1 is not None and hasattr(t1, "get_fill_opacity"))
+                else getattr(t1, "fill_opacity", None)
+            ),
+            getattr(b1, "fill_opacity", None),
+            getattr(b1, "z_index", None),
+        )
+        self.logger.debug(
+            "array.compare.visual j=%s text_opacity=%s body_opacity=%s z_body=%s",
+            i2,
+            (
+                t2.get_fill_opacity() if (t2 is not None and hasattr(t2, "get_fill_opacity"))
+                else getattr(t2, "fill_opacity", None)
+            ),
+            getattr(b2, "fill_opacity", None),
+            getattr(b2, "z_index", None),
+        )
         color = GREEN if result else RED
         scale = 1.08 if result else 1.15  # slightly larger pulse for "swap"   
         
@@ -237,6 +280,7 @@ class VisualArray(VisualStructure):
             self.unhighlight(element=cell_1,runtime=0.2),
             self.unhighlight(element=cell_2,runtime=0.2)
         )
+        self.logger.debug("array.compare i=%s j=%s result=%s", index_1, index_2, result)
         return Succession(highlight,pulse,Wait(0.1),unhighlight)
 
                
@@ -246,6 +290,7 @@ class VisualArray(VisualStructure):
         shifting all cells in between accordingly.
         """
         def build():
+            self.logger.debug("array.shift_cell from=%s to=%s", from_idx, to_idx)
             #move_cell components
             def hop_up( cell:int|Cell, lift=0.5, runtime=0.3):
                 cell = self.get_element(cell)
@@ -297,6 +342,10 @@ class VisualArray(VisualStructure):
     def move_cell(self,cell:int|Cell,target_pos,runtime=1,direction="up") -> Succession:
         """Moves specified cell to desired position"""
         cell:Cell = self.get_element(cell)
+        try:
+            idx = self.get_index(cell)
+        except Exception:
+            idx = None
         #Freeze vectors so later moves don't affect targets
         start = np.array(cell.center, dtype=float).copy()
         target_pos = np.array(target_pos, dtype=float).copy()
@@ -323,6 +372,7 @@ class VisualArray(VisualStructure):
             ApplyMethod(cell.move_to, x_shift),
             ApplyMethod(cell.move_to, y_shift),
         )
+        self.logger.debug("array.move_cell index=%s target=%s rt=%.2f", idx, np.array2string(target_pos, precision=2), runtime)
         return cell_shift
     
    
@@ -337,6 +387,7 @@ class VisualArray(VisualStructure):
             cell_height=self.element_height,
             border=self.border,
         )
+
         last_cell:Cell = self.elements[-1] if self.elements else cell
         if self.elements:#If an array already exists
             right_side = last_cell.right
@@ -350,9 +401,19 @@ class VisualArray(VisualStructure):
        
         if recenter: 
             self.move_to(self.pos)
-            
+        self.logger.debug("array.append value=%s -> len=%d", data, len(self.elements))
+
+    def __delitem__(self, index: int | Cell) -> None:
+        cell: Cell = self.get_element(index)
+        idx = self.get_index(cell)
+        if self.scene and is_animating() and not self.scene.in_play:
+            self.pop(idx)
+            return
+        self.elements.pop(idx)
+        self.logger.debug("array.del index=%s -> len=%d", idx, len(self.elements))
+
     def pop(self,index:int|Cell,runtime=0.5) -> any:
-        
+
         def slide_to(cell:int|Cell, target_pos, runtime=0.5):
                 cell:Cell = self.get_element(cell)
                 cell_pos = cell.get_center()
@@ -361,6 +422,7 @@ class VisualArray(VisualStructure):
                 return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
         
         popped_cell:Cell = self.get_element(index)
+
         anims = []
         anims.append(FadeOut(popped_cell))
         for i in range(index - 1,-1,-1): #Shift cells to the right to fill up the popped cell
@@ -371,6 +433,8 @@ class VisualArray(VisualStructure):
             
         self.play(*anims,runtime=runtime)    
         self.elements.pop(index)
+        self.remove(popped_cell)
+        self.logger.debug("array.pop index=%s -> len=%d", index, len(self.elements))
         
         return popped_cell.value
     
@@ -378,6 +442,7 @@ class VisualArray(VisualStructure):
 
         self.append(data)
         self.play(self.shift_cell(from_idx=len(self.elements) - 1,to_idx=index))
+        self.logger.debug("array.insert index=%s value=%s -> len=%d", index, data, len(self.elements))
         
     
     def swap(self, idx_1: VisualElement|int, idx_2: VisualElement|int, color=YELLOW, runtime=0.5) -> Succession:
@@ -396,15 +461,14 @@ class VisualArray(VisualStructure):
         # Freeze absolute targets so they don't drift when the first move runs
         pos_1 = np.array(cell_1.center, dtype=float).copy()
         pos_2 = np.array(cell_2.center, dtype=float).copy()
+        self.logger.debug(
+            "array.swap start i=%s j=%s pos_i=%s pos_j=%s",
+            idx_1,
+            idx_2,
+            np.array2string(pos_1, precision=2),
+            np.array2string(pos_2, precision=2),
+        )
 
-        # (currently uses move_cell, future: move_element)
-        # # Keep text visible and above bodies during motion
-        # if hasattr(cell_1, "text"):
-        #     cell_1.text.set_opacity(1)
-        #     cell_1.text.z_index = max(getattr(cell_1.body, "z_index", 0) + 1, getattr(cell_1.text, "z_index", 1))
-        # if hasattr(cell_2, "text"):
-        #     cell_2.text.set_opacity(1)
-        #     cell_2.text.z_index = max(getattr(cell_2.body, "z_index", 0) + 1, getattr(cell_2.text, "z_index", 1))
 
         move_1 = self.move_cell(cell_1, target_pos=pos_2.copy(), runtime=runtime)
         move_2 = self.move_cell(cell_2, target_pos=pos_1.copy(), runtime=runtime)
@@ -417,6 +481,7 @@ class VisualArray(VisualStructure):
         def _finish_swap():
             original_finish()
             self.elements[idx_1], self.elements[idx_2] = self.elements[idx_2], self.elements[idx_1]
+            self.logger.debug("array.swap finalize i=%s j=%s", idx_1, idx_2)
 
         finalize.finish = _finish_swap
 
@@ -427,6 +492,12 @@ class VisualArray(VisualStructure):
 
     def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
+        if not self._instantialized:
+            self.logger.debug(
+                "array.create start len=%d pos=%s",
+                len(self._raw_data),
+                np.array2string(self.get_center(), precision=2),
+            )
         if not self._instantialized:  # instantiate cell geometry without animation
             anchor = np.array(self.get_center())
             if not np.allclose(anchor, 0):
@@ -456,16 +527,16 @@ class VisualArray(VisualStructure):
                     offset = (idx - center_shift) * element_width
                     cell.move_to(self.pos + RIGHT * offset)
             self.move_to(self.pos)
-            self.set_opacity(0)  # keep geometry hidden until animated
+            self.set_opacity(0)  
             
             if not self.scene:
                 return None
-            # return Wait(1e-6)
+
 
         if not self.scene:
             return None
 
-        # Update stored anchor to reflect any external positioning (e.g., arrange/shift)
+        #Update stored anchor to reflect any external positioning (e.g., arrange/shift)
         self.pos = np.array(self.get_center())
         self.set_opacity(1)
 
@@ -479,6 +550,7 @@ class VisualArray(VisualStructure):
         runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
         cell_objs = [AnimationGroup(Create(cell.body),Write(cell.text),lag_ratio=runtime) for cell in cells]
         
+    
         return AnimationGroup( 
             *cell_objs,
             lag_ratio=0.1,
