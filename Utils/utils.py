@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator as op
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Sequence,Callable
 
 import numpy as np
 from manim import Animation, ApplyMethod, DOWN, LEFT, RIGHT, UP
@@ -137,22 +137,18 @@ def get_offset_position(element:VisualElement, coordinate=None, direction:np.nda
     - The offset *distance* is determined by the element's body size.
     - The offset *origin* is `coordinate` (defaults to element center).
     """
-
+    vec = direction
     if direction is UP:
         base = element.top if coordinate is None else np.array(coordinate)
-        vec = direction
         scale = element.body_height
     elif direction is DOWN:
         base = element.bottom if coordinate is None else np.array(coordinate)
-        vec = direction
         scale = element.body_height
     elif direction is LEFT:
         base = element.left if coordinate is None else np.array(coordinate)
-        vec = direction
         scale = element.body_width
     elif direction is RIGHT:
         base = element.right if coordinate is None else np.array(coordinate)
-        vec = RIGHT
         scale = element.body_width
     else:
         raise ValueError(f"Invalid direction: {direction}")
@@ -165,10 +161,24 @@ def hop_element(
     *,
     lift: float = 0.5,
     runtime: float = 0.3,
+    direction: np.ndarray = UP,
 ) -> Animation:
     """Return a hop animation for a visual element."""
     start = element.center
-    shift_vec = (element.top - start) / np.linalg.norm(element.top - start)
+    if direction is UP:
+        raw_vec = element.top - start
+    elif direction is DOWN:
+        raw_vec = element.bottom - start
+    elif direction is LEFT:
+        raw_vec = element.left - start
+    elif direction is RIGHT:
+        raw_vec = element.right - start
+    else:
+        raw_vec = np.asarray(direction, dtype=float)
+    norm = np.linalg.norm(raw_vec)
+    if norm == 0:
+        raise ValueError("Cannot compute hop direction for zero-length vector.")
+    shift_vec = raw_vec / norm
     hop_pos = start + shift_vec * (element.body_height + lift)
     return ApplyMethod(element.move_to, hop_pos, run_time=runtime)
 
@@ -178,11 +188,19 @@ def slide_element(
     *,
     target_pos: Sequence[float] | np.ndarray,
     runtime: float = 0.5,
+    align: str = "x",
 ) -> Animation:
     """Return a slide animation while preserving vertical alignment."""
     current = element.center
     goal = np.asarray(target_pos, dtype=float)
-    planar_goal = np.array([goal[0], current[1], current[2]])
+    if align == "x":
+        planar_goal = np.array([goal[0], current[1], current[2]])
+    elif align == "y":
+        planar_goal = np.array([current[0], goal[1], current[2]])
+    elif align == "z":
+        planar_goal = np.array([current[0], current[1], goal[2]])
+    else:
+        raise ValueError(f"Unsupported alignment axis: {align}")
     return ApplyMethod(element.move_to, planar_goal, run_time=runtime)
 
 class Event:
@@ -205,7 +223,7 @@ class Event:
     result : bool | None, optional
         Outcome flag for comparisons or predicates.
     comment : str | None, optional
-        Free-form human-readable annotation.
+        Free-form annotation.
     line_info : tuple[str, int, str] | None, optional
         Source metadata captured by the tracer as ``(filename, lineno, func_name)``.
     """
