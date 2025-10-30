@@ -4,7 +4,8 @@ from typing import Any
 from Structures.arrays import Cell
 from Structures.base import VisualStructure,VisualElement
 from Utils.logging_config import setup_logging
-
+from Utils.runtime import is_animating
+from Utils.utils import LazyAnimation
 class Entry(VisualElement):
     def __init__(self, master = None, kv_pair:tuple[any,any] = None, label = None,
                  entry_height:int=1,entry_width:int=4,**kwargs):
@@ -21,6 +22,12 @@ class Entry(VisualElement):
         self.key_cell.move_to(LEFT * entry_width*0.75 / 2) #We escape the encompassing value_cell
         body = VGroup(self.key_cell,self.value_cell)
         super().__init__(body, master, kv_pair, label, **kwargs)
+    @property
+    def value(self):
+        return self.value_cell.value
+    @property
+    def key(self):
+        return self.key_cell.value
     
 class VisualHashTable(VisualStructure):
     def __init__(self,data:dict,scene,element_width=4,element_height=1,text_color=WHITE,label=None,**kwargs):
@@ -69,16 +76,46 @@ class VisualHashTable(VisualStructure):
             )
 
         return entry
+    
     def __getitem__(self, key):
-        element = 
-    def _highlight_entry(self,element:any|VisualElement,color:ManimColor=YELLOW,opacity:float = 0.5):
-        """Sequentially highlights the entry's key cell then value cell(custom highlight sequence)"""
-        anims = []
-        element:Entry = self.get_element(element)
-        anims.append(super().highlight(element=element.key_cell,color=color,opacity=opacity,runtime=0.3))
-        anims.append(super().unhighlight(element=element.key_cell,color=color,opacity=opacity,runtime=0.2))
-        anims.append(super().highlight(element=element.value_cell,color=color,opacity=opacity,runtime=0.3))
-        anims.append(super().unhighlight(element=element.value_cell,color=color,opacity=opacity,runtime=0.2))
+        entry = self._get_entry(key=key)
+        if self.scene and is_animating() and self.scene.in_play:
+            self.play(self._highlight_entry(element=key))
+        return entry
+    def __setitem__(self, key, value):
+        entry = self._get_entry(key=key)
+        if self.scene and is_animating() and self.scene.in_play:
+            self.play(self._highlight_entry(element=key))
+        entry.value = value
+    
+    def set_value(self, key: Any, value: Any) -> LazyAnimation:
+        """Update the value cell for ``key`` and animate the change when possible."""
+
+        def build():
+            entry = self._get_entry(key)
+            transform = entry.value_cell.set_value(value, color=self.text_color)
+            entry.value = entry.value_cell.value
+
+            self.logger.debug("hash_table.set_value key=%s value=%s", key, entry.value)
+
+            if self.scene and is_animating() and self.scene.in_play:
+                return Succession(self._highlight_entry(key), transform)
+            return transform
+
+        return LazyAnimation(builder=build)
+    
+        
+    
+    
+    def _highlight_entry(self, element: Any | Entry, color: ManimColor = YELLOW, opacity: float = 0.5):
+        """Sequentially highlight key then value cells for the targeted entry."""
+        entry = element if isinstance(element, Entry) else self._get_entry(element)
+        anims = [
+            super().highlight(element=entry.key_cell, color=color, opacity=opacity, runtime=0.3),
+            super().unhighlight(element=entry.key_cell, color=color, opacity=opacity, runtime=0.2),
+            super().highlight(element=entry.value_cell, color=color, opacity=opacity, runtime=0.3),
+            super().unhighlight(element=entry.value_cell, color=color, opacity=opacity, runtime=0.2),
+        ]
         return Succession(*anims)
     
     

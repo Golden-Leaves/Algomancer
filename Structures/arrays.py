@@ -10,6 +10,7 @@ BRIGHT_GREEN = "#00FF00"
 
     
 class Cell(VisualElement):
+    """Visual representation of a single array slot with body + text managed together."""
     def __init__(self, value:any,master:VisualStructure,
                 cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,border=True,**kwargs):
 
@@ -34,10 +35,22 @@ class Cell(VisualElement):
         self.body.z_index = 0
         self.text.z_index = 1
         self.add(self.body, self.text)
+        self._cell_height = cell_height
+        self._cell_width = cell_width
         
     def create(self,runtime:float=0.5) -> AnimationGroup:
         return AnimationGroup(Create(self.body),Write(self.text),lag_ratio=runtime)
 
+    def set_value(self, value: any, *, color: ManimColor | None = None, runtime: float = 0.5) -> Transform:
+        """Update the cell's stored value and return the corresponding text transform."""
+        resolved = value.value if hasattr(value, "value") else value
+        text_color = color or self._base_text_color
+        text_scale = 0.45 * self._cell_height / MathTex(0).height
+        new_text = MathTex(resolved).set_color(text_color).scale(text_scale)
+        new_text.move_to(self.body.get_center())
+        new_text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
+        self.value = resolved
+        return Transform(self.text, new_text, run_time=runtime)
 
     def restore_visual_state(self):
         """Reset text style after animations that might dim it."""
@@ -213,21 +226,15 @@ class VisualArray(VisualStructure):
           
     def set_value(self,index:int|Cell,value:any) -> Succession|Transform:
         def build():
-        
-            element_value = value.value if hasattr(value,"value") else value
             cell:Cell = self.get_element(index)
-            text_scale = 0.45 * self.element_height / MathTex(0).height
-            new_text = MathTex(element_value).set_color(self.text_color).scale(text_scale)
-            new_text.move_to(cell.body.get_center())
-            new_text.add_updater(lambda m, body=cell.body: m.move_to(body.get_center()))
-            cell.value = element_value
-        
+            animation = cell.set_value(value, color=self.text_color)
+            element_value = cell.value
             try:
                 idx_num = self.get_index(cell)
             except Exception:
                 idx_num = index if isinstance(index, int) else None
             self.logger.debug("array.set_value index=%s value=%s", idx_num, element_value)
-            return Transform(cell.text,new_text,run_time=0.5)
+            return animation
         return LazyAnimation(builder=build)
     
     def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True,scalar=False) -> Succession:
