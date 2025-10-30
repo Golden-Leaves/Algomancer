@@ -1,9 +1,12 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING,Callable
-from manim import *
-import numpy as np
-from typing import Any
+
 import operator as op
+from typing import TYPE_CHECKING, Sequence
+
+import numpy as np
+from manim import Animation, ApplyMethod, DOWN, LEFT, RIGHT, UP
+from typing import Any
+
 if TYPE_CHECKING:
     from Structures.base import VisualElement
 _OPS = {
@@ -156,6 +159,31 @@ def get_offset_position(element:VisualElement, coordinate=None, direction:np.nda
 
     
     return base + vec * scale * buff
+
+def hop_element(
+    element: "VisualElement",
+    *,
+    lift: float = 0.5,
+    runtime: float = 0.3,
+) -> Animation:
+    """Return a hop animation for a visual element."""
+    start = element.center
+    shift_vec = (element.top - start) / np.linalg.norm(element.top - start)
+    hop_pos = start + shift_vec * (element.body_height + lift)
+    return ApplyMethod(element.move_to, hop_pos, run_time=runtime)
+
+
+def slide_element(
+    element: "VisualElement",
+    *,
+    target_pos: Sequence[float] | np.ndarray,
+    runtime: float = 0.5,
+) -> Animation:
+    """Return a slide animation while preserving vertical alignment."""
+    current = element.center
+    goal = np.asarray(target_pos, dtype=float)
+    planar_goal = np.array([goal[0], current[1], current[2]])
+    return ApplyMethod(element.move_to, planar_goal, run_time=runtime)
 
 class Event:
     """Structured record of a single visualization action.

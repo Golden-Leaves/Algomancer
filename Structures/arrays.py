@@ -1,7 +1,7 @@
 from manim import *
 import numpy as np
 import math
-from Utils.utils import LazyAnimation,get_offset_position
+from Utils.utils import LazyAnimation, get_offset_position, hop_element, slide_element
 from Structures.base import VisualStructure,VisualElement
 from Structures.pointers import Pointer
 from Utils.runtime import is_animating,AlgoScene
@@ -26,20 +26,19 @@ class Cell(VisualElement):
         
 
 
-        text_scale = 0.4 * cell_height / Integer(0).height #38% of cell area
+        text_scale = 0.4 * cell_height / MathTex(0).height #38% of cell area
         self._base_text_color = text_color
-        self.text = Integer(value).set_color(text_color).scale(text_scale)
+        self.text = MathTex(value).set_color(text_color).scale(text_scale)
         self.text.move_to(self.body.get_center())
-        # Robust updater that binds to this instance's body at definition time
         self.text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
         self.body.z_index = 0
         self.text.z_index = 1
-        # Draw body first so the text renders above without inheriting opacity tint
         self.add(self.body, self.text)
+        
+    def create(self,runtime:float=0.5) -> AnimationGroup:
+        return AnimationGroup(Create(self.body),Write(self.text),lag_ratio=runtime)
 
-        
-        
-    
+
     def restore_visual_state(self):
         """Reset text style after animations that might dim it."""
         if hasattr(self, "text"):
@@ -96,8 +95,7 @@ class VisualArray(VisualStructure):
               Coordinates for the array’s center if `pos` is not provided.  
               Defaults to ORIGIN on each axis.
         """
-        self.logger = setup_logging(logger_name="algomancer.arrays")
-        self.logger.setLevel("DEBUG")
+        self.logger = setup_logging(logger_name="algomancer.arrays",output=False)
         self._raw_data = data #The original structure the user passed in, maybe don't touch this beyond create()
         self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)
@@ -108,7 +106,7 @@ class VisualArray(VisualStructure):
         self._layout_proxy: Mobject | None = None
         self._instantialized = False
         self._iter_pointer = None
-        # Info log for structure initialization
+
         self.logger.info(
             "array.init len=%d w=%s h=%s rounded=%s border=%s label=%s pos=%s",
             len(self._raw_data),
@@ -151,6 +149,7 @@ class VisualArray(VisualStructure):
                                         Wait(0.1),
                                         self.unhighlight(element=cell,runtime=0.1),)
                     self.play(animation)
+                    
             if target_val == cell.value:
                 result = True
                 scale =  1.15
@@ -197,7 +196,7 @@ class VisualArray(VisualStructure):
             slots = [element.center for element in self.elements] #Snap shot the current positions of each index
             self.elements.sort(key= lambda el: el.value, reverse=reverse)
             for i, elem in enumerate(self.elements):
-                # reposition to correct cell position without animation
+
                 elem.move_to(slots[i])
                 
             self.submobjects = list(self.elements)
@@ -214,13 +213,11 @@ class VisualArray(VisualStructure):
           
     def set_value(self,index:int|Cell,value:any) -> Succession|Transform:
         def build():
-    
+        
             element_value = value.value if hasattr(value,"value") else value
-            print(element_value)
             cell:Cell = self.get_element(index)
-            print("Before Transform:", cell, "master:", cell.master)
-            text_scale = 0.45 * self.element_height / Integer(0).height
-            new_text = Integer(element_value).set_color(self.text_color).scale(text_scale)
+            text_scale = 0.45 * self.element_height / MathTex(0).height
+            new_text = MathTex(element_value).set_color(self.text_color).scale(text_scale)
             new_text.move_to(cell.body.get_center())
             new_text.add_updater(lambda m, body=cell.body: m.move_to(body.get_center()))
             cell.value = element_value
@@ -238,7 +235,7 @@ class VisualArray(VisualStructure):
             return Wait(0)
         
         cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2) 
-        # DEBUG: concise visual state for both cells
+
         i1 = self.get_index(cell_1)
         i2 = self.get_index(cell_2)
         b1, t1 = getattr(cell_1, "body", None), getattr(cell_1, "text", None)
@@ -274,11 +271,10 @@ class VisualArray(VisualStructure):
         pulse = AnimationGroup(
             self.indicate(element=cell_1,scale_factor=scale,color=color,runtime=0.2),
             self.indicate(element=cell_2,scale_factor=scale,color=color,runtime=0.2),
-            lag_ratio=0.1
         )
         unhighlight = AnimationGroup(
             self.unhighlight(element=cell_1,runtime=0.2),
-            self.unhighlight(element=cell_2,runtime=0.2)
+            self.unhighlight(element=cell_2,runtime=0.2),
         )
         self.logger.debug("array.compare i=%s j=%s result=%s", index_1, index_2, result)
         return Succession(highlight,pulse,Wait(0.1),unhighlight)
@@ -291,38 +287,19 @@ class VisualArray(VisualStructure):
         """
         def build():
             self.logger.debug("array.shift_cell from=%s to=%s", from_idx, to_idx)
-            #move_cell components
-            def hop_up( cell:int|Cell, lift=0.5, runtime=0.3):
-                cell = self.get_element(cell)
-                start = cell.center
-                shift_vec = (cell.top - start) / np.linalg.norm(cell.top - start)
-                hop_pos = start + shift_vec * (cell.body_height + lift)
-                return ApplyMethod(cell.move_to, hop_pos, run_time=runtime)
-
-            def slide_to(cell:int|Cell, target_pos, runtime=0.5):
-                cell:Cell = self.get_element(cell)
-                cell_pos = cell.center
-                
-                target_pos = np.array([target_pos[0],cell_pos[1],cell_pos[2]])
-                return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
-
-            def drop_down(cell:int|Cell, target_pos, runtime=0.3):
-                cell = self.get_element(cell)
-                return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
-            
             anims = []
             step = -1 if from_idx > to_idx else 1 #If from_idx is larger than to_idx then shift right else shift left
             
             destination = self.get_element(to_idx).center
             key:Cell = self.get_element(from_idx)
-            anims.append(hop_up(cell=key))
+            anims.append(hop_element(element=key))
             for i in range(from_idx + step,to_idx + step,step):
                 cell:Cell = self.elements[i]
                 prev:Cell = self.elements[i - step]
-                anims.append(slide_to(cell=cell,target_pos=prev.center))
+                anims.append(slide_element(element=cell,target_pos=prev.center))
                 
-            anims.append(slide_to(cell=key,target_pos=destination))
-            anims.append(drop_down(cell=key,target_pos=destination))
+            anims.append(slide_element(element=key,target_pos=destination))
+            anims.append(ApplyMethod(key.move_to, destination, run_time=0.3))
             finalize:Wait = Wait(0)
             finish_animation = finalize.finish
             #https://docs.manim.community/en/stable/reference/manim.animation.composition.Succession.html#manim.animation.composition.Succession.finish
@@ -402,7 +379,15 @@ class VisualArray(VisualStructure):
         if recenter: 
             self.move_to(self.pos)
         self.logger.debug("array.append value=%s -> len=%d", data, len(self.elements))
-
+        
+    def extend(self,iterable) -> None:
+        """Extend list by appending elements from the iterable"""
+        if not hasattr(iterable,"__iter__"):
+            raise TypeError("extend() argument must be iterable")
+        for item in iterable:
+            self.append(item)
+            self.wait(0.05)
+            
     def __delitem__(self, index: int | Cell) -> None:
         cell: Cell = self.get_element(index)
         idx = self.get_index(cell)
@@ -520,7 +505,7 @@ class VisualArray(VisualStructure):
                 cell.set_opacity(0)
             self._instantialized = True
             
-            if self.elements:
+            if self.elements: #offset logic
                 element_width = float(self.element_width)
                 center_shift = (len(self.elements) - 1) / 2
                 for idx, cell in enumerate(self.elements):
@@ -548,11 +533,11 @@ class VisualArray(VisualStructure):
         
         #AnimationGroup in here controls cell vs text behaviour
         runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
-        cell_objs = [AnimationGroup(Create(cell.body),Write(cell.text),lag_ratio=runtime) for cell in cells]
+        cell_anims = [cell.create(runtime=runtime) for cell in cells]
         
     
         return AnimationGroup( 
-            *cell_objs,
+            *cell_anims,
             lag_ratio=0.1,
             runtime=runtime
         )
