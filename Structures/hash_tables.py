@@ -5,29 +5,40 @@ from Structures.arrays import Cell
 from Structures.base import VisualStructure,VisualElement
 from Utils.logging_config import setup_logging
 from Utils.runtime import is_animating
-from Utils.utils import LazyAnimation
+from Utils.utils import LazyAnimation,hop_element,slide_element
 class Entry(VisualElement):
-    def __init__(self, master = None, kv_pair:tuple[any,any] = None, label = None,
+    def __init__(self, master = None, kv_pair:tuple[Any,Any] = None,hash=None, label = None,
                  entry_height:int=1,entry_width:int=4,**kwargs):
         if kv_pair is None or not isinstance(kv_pair,tuple):
             raise ValueError("kv_pair must be a (key,value) tuple")
         
         self.entry_height = entry_height
         self.entry_width = entry_width
-        self.key = kv_pair[0]
-        self.value = kv_pair[1]
         self.value_cell:Cell = Cell(value=kv_pair[1],master=master,cell_width=entry_width*0.75,cell_height=entry_height)
         self.key_cell:Cell = Cell(value=kv_pair[0],master=master,cell_width=entry_width*0.25,cell_height=entry_height)
         self.value_cell.move_to(RIGHT * entry_width*0.25 / 2) #Move center to the right edge of key_cell
         self.key_cell.move_to(LEFT * entry_width*0.75 / 2) #We escape the encompassing value_cell
         body = VGroup(self.key_cell,self.value_cell)
+        body.move_to(ORIGIN) #Moves the body back to origin since the movement shifts it
         super().__init__(body, master, kv_pair, label, **kwargs)
+        
+        
     @property
     def value(self):
         return self.value_cell.value
+    @value.setter
+    def value(self,new_value):
+        self.value_cell.value = new_value
+        
     @property
     def key(self):
         return self.key_cell.value
+    @key.setter
+    def key(self,new_key):
+        self.key_cell.value = new_key
+
+    def set_value(self,value:Any,color:ManimColor,runtime:float=0.5):
+        return self.value_cell.set_value(value=value,color=color)
     
 class VisualHashTable(VisualStructure):
     def __init__(self,data:dict,scene,element_width=4,element_height=1,text_color=WHITE,label=None,**kwargs):
@@ -39,11 +50,11 @@ class VisualHashTable(VisualStructure):
         self.element_width = element_width
         self.element_height = element_height
         self.text_color = WHITE
-        self.entries:dict[any,Entry] = {} 
+        self.entries:dict[Any,Entry] = {} 
         self._instantialized = False
     def __len__(self):
         return len(self.entries)
-    
+    # @classmethod
     def _hash_key(self,key):
         if isinstance(key,int):
             raw = key
@@ -79,14 +90,57 @@ class VisualHashTable(VisualStructure):
     
     def __getitem__(self, key):
         entry = self._get_entry(key=key)
-        if self.scene and is_animating() and self.scene.in_play:
+        if self.scene and is_animating() and not self.scene.in_play:
             self.play(self._highlight_entry(element=key))
         return entry
     def __setitem__(self, key, value):
         entry = self._get_entry(key=key)
-        if self.scene and is_animating() and self.scene.in_play:
+        self.play(entry.set_value(value=value))
+        if self.scene and is_animating() and not self.scene.in_play:
             self.play(self._highlight_entry(element=key))
-        entry.value = value
+            
+    def pop(self,key:Any|Entry,default=None,runtime=0.5) -> Any:
+        keys = list(self.entries)
+        mid = len(keys) // 2
+        previous_entries = []
+        anims = []
+        popped_entry = None
+        
+        for _key in keys:
+            try:
+                entry = self._get_entry(key=_key)
+                if _key == key or entry is key: #Found entry
+                    bucket = self._hash_key(key=key)
+                    popped_entry = entry
+                    anims.append(FadeOut(entry))
+                    break
+                previous_entries.append(entry)
+            except KeyError as e:
+                if default is not None:
+                    return default
+                raise e
+            
+        popped_cell_index = keys.index(popped_entry.key)
+        if popped_cell_index <= mid:
+            for idx in range(popped_cell_index - 1,-1,-1):
+                from_key:Entry = self._get_entry(keys[idx])
+                to_key:Entry = self._get_entry(keys[idx + 1])
+                anims.append(slide_element(element=from_key,target_pos=to_key.center))
+        else:
+            for idx in range(popped_cell_index + 1,len(keys)):
+                from_key:Entry = self._get_entry(keys[idx])
+                to_key:Entry = self._get_entry(keys[idx - 1])
+                anims.append(slide_element(element=from_key,target_pos=to_key.center))
+        
+        if self.scene and is_animating() and not self.scene.in_play:
+            self.play(*anims,runtime=runtime)    
+            
+        self.elements[bucket] = None
+        self.entries.pop(popped_entry.key)
+        self.remove(popped_entry)
+        self.logger.debug("array.pop index=%s -> len=%d", key, len(self.elements))
+        return popped_entry.value
+        
     
     def set_value(self, key: Any, value: Any) -> LazyAnimation:
         """Update the value cell for ``key`` and animate the change when possible."""
@@ -126,12 +180,16 @@ class VisualHashTable(VisualStructure):
             if not np.allclose(anchor, 0):
                 self.pos = anchor
             for key,data in self._raw_data.items():
-                entry = Entry(master=self,kv_pair=(key,data),label=self.label)
                 hashed_key = self._hash_key(key=key)
+                entry = Entry(master=self,kv_pair=(key,data),hash=hashed_key,label=self.label)
                 self.entries[key] = entry
                 self.elements[hashed_key] = entry
                 self.add(entry)
-    
+                
+            self.arrange(DOWN,buff=0.6) #Magic number
+            first_entry = next(iter(self.entries.values()), None)
+            if first_entry is not None:
+                self.align_to(first_entry, LEFT)
             self.move_to(self.pos)
             self.set_opacity(0)
             self._instantialized = True
@@ -142,6 +200,7 @@ class VisualHashTable(VisualStructure):
         self.pos = np.array(self.get_center())
         self.set_opacity(1)
         runtime = max(0.5,runtime)
+        
         if entries is None:
             entries = self.entries.values()
         if not entries:
