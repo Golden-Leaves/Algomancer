@@ -1,15 +1,25 @@
-# test_eq_logic.py
-from Structures.arrays import VisualArray  # or wherever your class lives
+from manim import *
+from Components.render_scene import render_scene
+from Components.runtime import AlgoScene
+from Structures.arrays import VisualArray
 
-# Make a dummy scene or pass None for now
-arr = VisualArray([1, 2, 3])
-a, b = arr.get_element(0), arr.get_element(1)
 
-# Ensure parent is linked (should be by constructor)
-print(a.parent is arr)  # expect True
+class DragArrayScene(AlgoScene):
+    def construct(self):
+        array = VisualArray([1, 2, 3, 4], scene=self,border=0)
+        array.move_to(ORIGIN)
+        array.play(array.create())
+        array1 = VisualArray([2,3,5],scene=self,pos=DL)
+        array1.play(array1.create())
+        self.array = array
+        self.interactive_embed()
 
-# Perform comparison
-print(a == b)           # triggers __eq__
 
-# Check event trace
-print(arr._trace[-1].__dict__)  # or whatever structure your log_event appends to
+if __name__ == "__main__":
+    render_scene(
+        DragArrayScene,
+        file=__file__,
+        quality="medium",
+        renderer="opengl",
+        preview=True,
+    )

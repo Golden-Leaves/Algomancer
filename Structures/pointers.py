@@ -1,7 +1,9 @@
 from manim import *
 from Structures.base import VisualStructure,VisualElement
-from Utils.utils import get_offset_position,get_operation
-from Utils.runtime import is_animating
+from Components.geometry import get_offset_position
+from Components.logging import setup_logging
+from Components.ops import get_operation
+from Components.runtime import is_animating
 import numpy as np
 class Pointer(VisualElement):
     """
@@ -27,12 +29,21 @@ class Pointer(VisualElement):
     """
     _next_id = 0
     def __init__(self,value:int,master:VisualStructure,label:str = "",color=YELLOW,direction:np.ndarray=UP,**kwargs):
+        self.logger = setup_logging("algomancer.pointers",output=False)
         self.id = Pointer._next_id
         self.size = kwargs.pop("size",1)
         type(self)._next_id += 1 #Polymorphism-friendly, since it calls the class that inherited and not Pointer if that's the case
         super().__init__(label=label,value=value,master=master,**kwargs)
         self.color = color
         self.direction = direction
+        self.logger.info(
+            "pointer.init id=%d value=%s dir=%s size=%.2f master=%s",
+            self.id,
+            value,
+            ("UP" if (direction is UP) else "DOWN" if (direction is DOWN) else ("LEFT" if (direction is LEFT) else "RIGHT")),
+            float(self.size),
+            hex(id(master)) if master is not None else None,
+        )
         
          
     def __hash__(self):
@@ -221,6 +232,11 @@ class Pointer(VisualElement):
     lambda m: m.next_to(self.body, self.direction, buff=0.15).align_to(self.body, ORIGIN)
 )
         self.add(self.body,self.label)
+        self.logger.info(
+            "pointer.create id=%d at=%s -> %s", self.id,
+            np.array2string(arrow_start, precision=2),
+            np.array2string(arrow_end, precision=2),
+        )
 
         return AnimationGroup(Create(self.body),Write(self.label),lag_ratio=0.2)
         
@@ -235,15 +251,20 @@ class Pointer(VisualElement):
         
         anim = ApplyMethod(self.shift, arrow_pos)
         self.value = new_index
+        self.logger.debug("pointer.move id=%d %s->%s", self.id, old_index, new_index)
         return anim
     
     def destroy(self):
+        """
+        Remove the pointer from the scene and clear its visual state, also plays a fade-out animation.
+        """
         if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
             self.master.play(FadeOut(self))
         self.clear_updaters()
         self.label = None
         self.body = None
         self.become(VGroup())  # clears content, removing the pointer normally doens't work? Itll just reappear later
+        self.logger.debug("pointer.destroy id=%d index=%s", self.id, getattr(self, "value", None))
     
 class PointerRange:
     """
@@ -267,7 +288,7 @@ class PointerRange:
     label : str | None
         Optional label for the pointer during iteration.
     """
-    def __init__(self,start,stop=None,step:int=1,master:VisualStructure=None,label:str=None,**kwargs):
+    def __init__(self,start,stop=None,step:int=1,master:VisualStructure=None,label:str=None,color:ManimColor=YELLOW,**kwargs):
         if stop is None:
             stop = start
             start = 0
@@ -276,14 +297,13 @@ class PointerRange:
         self.step = step.value if isinstance(step,VisualElement) else step
         self.master = master
         self.label = label
+        self.color = color
         self._current = start.value if isinstance(start,VisualElement) else start
         self.direction = kwargs.get("direction",UP)
-        
         self._started = False #Checks if iteration ahs started yet(logic in __next__)
-        # self.pointer:Pointer = Pointer(value=start,master=master,label=label,direction=self.direction)
-        color = kwargs.get("color",YELLOW)
+
         if (step > 0 and start < stop) or (step < 0 and start > stop): #Checks if the direction is valid
-            self.pointer:Pointer = Pointer(value=start,master=master,label=label,direction=self.direction,color=color)
+            self.pointer:Pointer = Pointer(value=start,master=master,label=label,direction=self.direction,color=self.color)
         else:
             self.pointer = None
             

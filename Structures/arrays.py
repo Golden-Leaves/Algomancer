@@ -1,17 +1,19 @@
-from manim import *
-import numpy as np
+from typing import Any
 import math
-from Utils.utils import LazyAnimation, get_offset_position, hop_element, slide_element
+import numpy as np
+from manim import *
+from Components.animations import LazyAnimation, hop_element, slide_element
+from Components.geometry import get_offset_position
+from Components.logging import setup_logging
+from Components.runtime import AlgoScene, is_animating
 from Structures.base import VisualStructure,VisualElement
 from Structures.pointers import Pointer
-from Utils.runtime import is_animating,AlgoScene
-from Utils.logging_config import setup_logging
 BRIGHT_GREEN = "#00FF00"
 
     
 class Cell(VisualElement):
     """Visual representation of a single array slot with body + text managed together."""
-    def __init__(self, value:any,master:VisualStructure,
+    def __init__(self, value:Any,master:VisualStructure,
                 cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,border=True,**kwargs):
 
         self.rounded = rounded
@@ -41,7 +43,7 @@ class Cell(VisualElement):
     def create(self,runtime:float=0.5) -> AnimationGroup:
         return AnimationGroup(Create(self.body),Write(self.text),lag_ratio=runtime)
 
-    def set_value(self, value: any, *, color: ManimColor | None = None, runtime: float = 0.5) -> Transform:
+    def set_value(self, value: Any, *, color: ManimColor | None = None, runtime: float = 0.5) -> Transform:
         """Update the cell's stored value and return the corresponding text transform."""
         resolved = value.value if hasattr(value, "value") else value
         text_color = color or self._base_text_color
@@ -52,11 +54,9 @@ class Cell(VisualElement):
         self.value = resolved
         return Transform(self.text, new_text, run_time=runtime)
 
-    def restore_visual_state(self):
-        """Reset text style after animations that might dim it."""
-        if hasattr(self, "text"):
-            self.text.set_color(self._base_text_color)
-            self.text.set_opacity(1.0)
+    def add_foreground_text(self):
+        text = self.text.copy()
+        
 
     # Ensure copies keep a valid text→body tracking updater
     def copy(self):
@@ -80,7 +80,7 @@ class Cell(VisualElement):
         return clone
     
 class VisualArray(VisualStructure):
-    def __init__(self,data:any,scene:AlgoScene|None=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
+    def __init__(self,data:Any,scene:AlgoScene|None=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
                 label:str=None,
                 **kwargs):
         """
@@ -130,7 +130,8 @@ class VisualArray(VisualStructure):
             label,
             np.array2string(self.pos, precision=2) if hasattr(self, "pos") else None,
         )
-
+    def __repr__(self):
+        return f"VisualArray({[element.value for element in self.elements]})"
 
             
     def __getitem__(self, index):
@@ -148,9 +149,6 @@ class VisualArray(VisualStructure):
         if self.scene and is_animating() and not self.scene.in_play:
             self.play(self.set_value(index=index,value=value))
         return 
-    
-    def __len__(self):
-        return len(self.elements)
     
     def __contains__(self,value):
         result = False
@@ -224,7 +222,7 @@ class VisualArray(VisualStructure):
             return super().sort(*args,**kwargs)
 
           
-    def set_value(self,index:int|Cell,value:any) -> Succession|Transform:
+    def set_value(self,index:int|Cell,value:Any) -> Succession|Transform:
         def build():
             cell:Cell = self.get_element(index)
             animation = cell.set_value(value, color=self.text_color)
@@ -404,23 +402,22 @@ class VisualArray(VisualStructure):
         self.elements.pop(idx)
         self.logger.debug("array.del index=%s -> len=%d", idx, len(self.elements))
 
-    def pop(self,index:int|Cell,runtime=0.5) -> any:
-
-        def slide_to(cell:int|Cell, target_pos, runtime=0.5):
-                cell:Cell = self.get_element(cell)
-                cell_pos = cell.get_center()
-                
-                target_pos = np.array([target_pos[0],cell_pos[1],cell_pos[2]])
-                return ApplyMethod(cell.move_to, target_pos, run_time=runtime)
-        
+    def pop(self,index:int|Cell,runtime=0.5) -> Any:
+        mid = len(self.elements) // 2
         popped_cell:Cell = self.get_element(index)
 
         anims = []
         anims.append(FadeOut(popped_cell))
-        for i in range(index - 1,-1,-1): #Shift cells to the right to fill up the popped cell
-            cell:Cell = self.elements[i]
-            prev:Cell = self.elements[i + 1]
-            anims.append(slide_to(cell=cell,target_pos=prev.get_center()))
+        if index <= mid:
+            for i in range(index - 1,-1,-1): #Shift cells to the right to fill up the popped cell
+                cell:Cell = self.elements[i]
+                prev:Cell = self.elements[i + 1]
+                anims.append(slide_element(element=cell,target_pos=prev.center))
+        else:
+            for i in range(index + 1,len(self.elements)): #Shift cells to the left to fill up the popped cell
+                cell:Cell = self.elements[i]
+                prev:Cell = self.elements[i - 1]
+                anims.append(slide_element(element=cell,target_pos=prev.center))
        
             
         self.play(*anims,runtime=runtime)    
@@ -516,7 +513,8 @@ class VisualArray(VisualStructure):
                 element_width = float(self.element_width)
                 center_shift = (len(self.elements) - 1) / 2
                 for idx, cell in enumerate(self.elements):
-                    offset = (idx - center_shift) * element_width
+                    #Indexes lower than center_shift will go left, higher will go right
+                    offset = (idx - center_shift) * element_width 
                     cell.move_to(self.pos + RIGHT * offset)
             self.move_to(self.pos)
             self.set_opacity(0)  

@@ -3,9 +3,9 @@ import numpy as np
 from typing import Any
 from Structures.arrays import Cell
 from Structures.base import VisualStructure,VisualElement
-from Utils.logging_config import setup_logging
-from Utils.runtime import is_animating
-from Utils.utils import LazyAnimation,hop_element,slide_element
+from Components.animations import LazyAnimation, hop_element, slide_element
+from Components.logging import setup_logging
+from Components.runtime import is_animating
 class Entry(VisualElement):
     """
     Composite visual element representing one key/value pair in the hash table.

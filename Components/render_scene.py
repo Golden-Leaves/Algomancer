@@ -9,7 +9,7 @@ QUALITY_MAP = {
     "4k": "k",       # -qk
 }
 
-def render_scene(scenes,file, quality="low", preview=True,image=False,renderer="opengl",write_to_file=False):
+def render_scene(scenes,file, quality="low", preview=True,image=False,renderer="opengl",write_to_file=False,fps=60):
     """
     Run this "manim -pql scene.py AnimatedSquareToCircle" command as if in a CLI, so you can run inside .py file\n
     file   : Pass file(with two underscores on both sides) to this\n
@@ -28,6 +28,7 @@ def render_scene(scenes,file, quality="low", preview=True,image=False,renderer="
     flag_renderer = f"--renderer={renderer}" if renderer else ""
     #opengl does not automatically write a file
     flag_write_to_movie = f"--write_to_movie" if renderer == "opengl" and write_to_file else "" 
+    flag_fps = f"--fps={fps}"
     outputs = []
     for scene in scenes:
         cmd = [
@@ -37,6 +38,7 @@ def render_scene(scenes,file, quality="low", preview=True,image=False,renderer="
             flag_image,
             flag_renderer,
             flag_write_to_movie,
+            flag_fps,
             str(Path(file)),
             scene.__name__,  # Scene class name
         ]

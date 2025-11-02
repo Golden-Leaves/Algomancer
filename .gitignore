@@ -209,3 +209,13 @@ __marimo__/
 todo.txt
 test.py
 script_dump.txt
+__pycache__
+test.ipynb
+media
+AGENTS.md
+CHANGELOG.md
+error_log.txt
+DEBUG
+script_test.py
+task_list.txt
+hash_table_todo.txt

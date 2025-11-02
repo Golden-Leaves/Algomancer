@@ -2,13 +2,22 @@ from __future__ import annotations
 from manim import *
 import numpy as np
 import math
+from typing import Any
+
 from Structures.arrays import VisualArray
 from Structures.base import VisualStructure
 
 class Node(VGroup):
-    def __init__(self,value:any,scene:Scene,height:int|float,width:int|float,text_color:ManimColor=WHITE,prev:Node = None,next:Node = None,**kwargs):
+    def __init__(self,value:Any,scene:Scene,height:int|float,width:int|float,text_color:ManimColor=WHITE,prev:Node = None,next:Node = None,**kwargs):
         super().__init__(**kwargs)
-        self.body = VisualArray([value],scene=scene,cell_height=height,cell_width=width,text_color=text_color,rounded=True)
+        self.body = VisualArray(
+            [value],
+            scene=scene,
+            element_height=height,
+            element_width=width,
+            text_color=text_color,
+            rounded=True,
+        )
         self.add(self.body)
 
         self.prev: Node = prev
@@ -19,7 +28,7 @@ class Node(VGroup):
         self.arrow_next = None
         
 class VisualLinkedList(VisualStructure):
-    def __init__(self,data:any,scene:Scene,node_width:int|float=1.25,node_height:int|float=0.5,text_color:ManimColor=WHITE,doubly:bool=False,**kwargs):
+    def __init__(self,data:Any,scene:Scene,node_width:int|float=1.25,node_height:int|float=0.5,text_color:ManimColor=WHITE,doubly:bool=False,**kwargs):
         self.pos = kwargs.pop("pos",None) #Center of the array
         if self.pos is not None:
             self.pos = np.array(self.pos)
@@ -115,7 +124,7 @@ class VisualLinkedList(VisualStructure):
         
         return AnimationGroup(*anims,lag_ratio=0.1)
         
-    def append(self,data:any,recenter=True) -> AnimationGroup:
+    def append(self,data:Any,recenter=True) -> AnimationGroup:
         
         node:Node = Node(value=data,scene=self.scene,width=self.node_width,height=self.node_height)
         

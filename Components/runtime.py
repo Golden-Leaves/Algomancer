@@ -7,7 +7,7 @@ import weakref
 import numpy as np
 from typing import TYPE_CHECKING
 from screeninfo import get_monitors
-from Utils.logging_config import setup_logging
+from Components.logging import setup_logging
 if TYPE_CHECKING:
     from Structures.base import VisualStructure
 
@@ -21,6 +21,7 @@ config.pixel_width = 1920
 config.pixel_height = 1080
 config.window_size = compute_window_size(0.75)  #75% of the screen
 config.samples=1
+
 ANIMATION_CONTEXT = contextvars.ContextVar("ANIMATION_CONTEXT", default=False) 
 CURRENT_LINE = contextvars.ContextVar("CURRENT_LINE", default=None)
 @contextlib.contextmanager
@@ -134,7 +135,7 @@ class AlgoScene(Scene):
         cursor_vec = point - state["origin"]
         length = max(0.1,np.linalg.norm(cursor_vec)) #structure's new "size"
 
-        scale_factor = length / state["base"] #new_length old_length
+        scale_factor = length / state["base"] #new_length / old_length
         incremental = scale_factor / state["scale"] #Divide by previous scale to get actual scale(we want additive scaling)
         if not np.isfinite(incremental) or incremental == 0:
             return False

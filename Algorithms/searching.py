@@ -1,5 +1,8 @@
 from Structures.arrays import VisualArray,Cell
-def linear_search(array:VisualArray,target:any) -> Cell|int:
+from typing import Any
+
+
+def linear_search(array:VisualArray,target:Any) -> Cell|int:
     
     for i in range(array.length):
         cell:Cell = array[i]

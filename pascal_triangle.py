@@ -1,22 +1,22 @@
 from manim import *
 from math import comb
 from Structures.arrays import VisualArray
-from Utils.render_scene import render_scene
-from Utils.runtime import AlgoScene
-from Utils.logging_config import setup_logging
+from Components.logging import setup_logging
+from Components.render_scene import render_scene
+from Components.runtime import AlgoScene
 
 
 class PascalTriangle(AlgoScene):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.logger = setup_logging("algomancer.pascal_triangle")
-        self.logger.setLevel("DEBUG")
+
 
     def build_pyramid(self, rows: int):
         self.logger.info("Building Pascal triangle with %s rows", rows)
         arrays :list[VisualArray]= []
         for n in range(1, rows + 1):
-            row = VisualArray([comb(n, k) for k in range(n + 1)], scene=self)
+            row = VisualArray([comb(n, k) for k in range(n + 1)], scene=self,element_height=1.5)
             if not arrays:
                 vertical_offset = UP * ((rows - 1) * row.element_height)
                 row.shift(vertical_offset)
@@ -46,4 +46,4 @@ class PascalTriangle(AlgoScene):
 
 
 if __name__ == "__main__":
-    render_scene(PascalTriangle, file=__file__, quality="high", renderer="opengl")
+    render_scene(PascalTriangle, file=__file__, quality="high", renderer="cairo")

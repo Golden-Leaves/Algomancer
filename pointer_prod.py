@@ -1,6 +1,6 @@
 from manim import *
 from Structures.arrays import VisualArray
-from Structures.pointer import Pointer
+from Structures.pointers import Pointer
 from helpers import render_scene
 
 class PointerTest(Scene):

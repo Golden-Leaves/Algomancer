@@ -1,8 +1,11 @@
 from __future__ import annotations
 from manim import *
 import numpy as np
-from Utils.utils import LazyAnimation, flatten_array, Event, resolve_value, get_operation
-from Utils.runtime import is_animating, AlgoScene, get_current_line_metadata
+from Components.animations import LazyAnimation
+from Components.events import Event
+from Components.helpers import flatten_array
+from Components.ops import get_operation, resolve_value
+from Components.runtime import AlgoScene, get_current_line_metadata, is_animating
 from typing import Any, TYPE_CHECKING
 from pprint import pformat
 import contextvars
@@ -32,7 +35,7 @@ class VisualStructure(VGroup):
     """
     def __init__(self, scene:AlgoScene,label:str, **kwargs):
         super().__init__(**kwargs)
-        self.pos = kwargs.pop("pos",None) #Center of the array
+        self.pos = kwargs.pop("pos",None)
         if self.pos is not None:
             self.pos = np.array(self.pos)
         
@@ -40,7 +43,7 @@ class VisualStructure(VGroup):
             x = kwargs.get("x",None)
             y = kwargs.get("y",None)
             z = kwargs.get("z",None)
-            if x is None and y is None and z is None:
+            if x is None and y is None and z is None: #Fills in missing axis values if not provided
                 self.pos = ORIGIN
                 x = x if x is not None else ORIGIN[0]
                 y = y if y is not None else ORIGIN[1]
@@ -52,43 +55,37 @@ class VisualStructure(VGroup):
         self._trace = []
         if scene is not None:
             scene.register_structure(self)
-        
-            
+    
+    def __len__(self):
+        return len(self.elements)
+    
     # def __hash__(self): #Python removes this when you override comparasions(__eq__,..) for whatever reason
     #     return id(self)
     
 
         
     def play(self, *anims, **kwargs):
-            """Recursive play: handles single or multiple animations\n
-            Can accept either an array or multiple comma-seperated animations
-            """
+        """Recursive play: handles single or multiple animations\n
+        Can accept either an array or multiple comma-seperated animations
+        """
+
+        
+        scene = self.scene
+        if not scene:
+            raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
+        for anim in flatten_array(result=[],objs=anims):
+            #Checks if it's a builder animation or just plain animation
+            if anim:
+                anim = anim.build() if isinstance(anim,LazyAnimation) else anim
+                if not isinstance(anim,Animation):
+                    raise TypeError(f"Unexpected {type(anim)} passed to play()")
+                scene.play(anim, **kwargs)
+                
+        for element in self.elements: 
+            if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
+                element.master = self
     
-            
-            scene = self.scene
-            if not scene:
-                raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
-            for anim in flatten_array(result=[],objs=anims):
-                #Checks if it's a builder animation or just plain animation
-                if anim:
-                    anim = anim.build() if isinstance(anim,LazyAnimation) else anim
-                    if not isinstance(anim,Animation):
-                        raise TypeError(f"Unexpected {type(anim)} passed to play()")
-                    scene.play(anim, **kwargs)
-                    
-            for element in self.elements: 
-                if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
-                    element.master = self
-                body = getattr(element, "body", None)
-                text = getattr(element, "text", None)
-                if body is not None and text is not None: #Brings the text to the front yet again
-                    try:
-                        text.set_opacity(1.0)
-                        text.z_index = max(getattr(body, "z_index", 0) + 1, getattr(text, "z_index", 1))
-                        text.move_to(body.get_center())
-                    except Exception:
-                        pass
-                    
+                
     def get_element(self, cell_or_index:VisualElement|int) -> VisualElement:
         """Error handling opps, can also be used to retrieve an element with an index"""
         from Structures.pointers import Pointer
@@ -213,7 +210,7 @@ class VisualStructure(VGroup):
         log_fn("structure.state %s\n%s", label, pformat(struct_payload, indent=2, width=120))
 
         targets = elements if elements is not None else self.elements
-        for idx, element in enumerate(targets):
+        for idx, element in enumerate(flatten_array(result=[],objs=targets)):
             if isinstance(element, VisualElement):
                 element.master = element.master or self
                 element.log_state(label=f"{label}.element[{idx}]", level=level)
@@ -261,25 +258,16 @@ class VisualStructure(VGroup):
         if hasattr(self, "logger"):
             self.logger.info("indicate idx=%s color=%s scale=%s", element_index, color, scale_factor)
         target = getattr(element_obj, "body", element_obj)
-
-        orig_color = target.get_fill_color() if hasattr(target, "get_fill_color") else None
-        orig_opacity = target.get_fill_opacity() if hasattr(target, "get_fill_opacity") else None
-
+       
         pulse = Indicate(target, color=color, scale_factor=scale_factor, run_time=runtime)
 
+        #Restore original stoke info
         finalize = Wait(0)
         _orig_finish = finalize.finish
 
         def _finish_restore():
             _orig_finish()
-            if orig_color is not None and orig_opacity is not None:
-                target.set_fill(orig_color, opacity=orig_opacity)
-            else:
-                self.unhighlight(element=element, runtime=0)
-            target.refresh_after_setting()
-            text = getattr(element_obj, "text", None)
-            if text is not None:
-                text.refresh_after_setting()
+            self.unhighlight(element=element, runtime=0)
 
         finalize.finish = _finish_restore
         return Succession(pulse, finalize)
@@ -340,7 +328,21 @@ class VisualElement(VGroup):
     - ``body`` is appended to the group in ``__init__`` so additional adornments
       (text, highlight rings, etc.) can be added via ``self.add(...)``.
     """
-    def __init__(self, body: VMobject=None,master:VisualStructure=None,value:any=None,label:str=None,**kwargs):
+    def __init__(self, body: VMobject=None,master:VisualStructure=None,value:Any=None,label:str=None,**kwargs):
+        self.pos = kwargs.pop("pos",None)
+        if self.pos is not None:
+            self.pos = np.array(self.pos)
+        
+        else:
+            x = kwargs.get("x",None)
+            y = kwargs.get("y",None)
+            z = kwargs.get("z",None)
+            if x is None and y is None and z is None: #Fills in missing axis values if not provided
+                self.pos = ORIGIN
+                x = x if x is not None else ORIGIN[0]
+                y = y if y is not None else ORIGIN[1]
+                z = z if z is not None else ORIGIN[2]
+                self.pos = np.array([x,y,z])
         super().__init__(**kwargs)
         self.body = body 
         #Since master has references to elements, and the elements store a reference to the master
@@ -380,15 +382,21 @@ class VisualElement(VGroup):
             self.text.set_color(self._base_text_color)
             self.text.set_opacity(1.0)
     @staticmethod
-    def get_mobject_state(mobj: Mobject | None) -> dict[str, Any]:
+    def get_mobject_state(mobj: Mobject | None, depth: int = 1) -> dict[str, Any]:
         """Return a snapshot of a Manim mobject's visual attributes."""
         if mobj is None:
             return {}
-
+        submobjects: list[Any] = []
+        if depth > 0: #recursively traverses submobjects to get their state
+            for child in getattr(mobj, "submobjects", []):
+                submobjects.append(VisualElement.get_mobject_state(child, depth=depth - 1))
+        else:
+            submobjects = [type(child).__name__ for child in getattr(mobj, "submobjects", [])]
+            
         state: dict[str, Any] = {
             "type": type(mobj).__name__,
             "z_index": getattr(mobj, "z_index", None),
-            "submobjects": [type(child).__name__ for child in getattr(mobj, "submobjects", [])],
+            "submobjects": submobjects,
         }
         if hasattr(mobj, "get_center"): state["center"] = np.array2string(mobj.get_center(), precision=3)
         if hasattr(mobj, "get_x"):
@@ -411,7 +419,7 @@ class VisualElement(VGroup):
         if hasattr(mobj, "get_opacity"): state["opacity"] = float(mobj.get_opacity())
         return state
 
-    def log_state(self, label: str = "state", level: str = "debug") -> None:
+    def log_state(self, label: str = "state", level: str = "debug",depth:int = 2) -> None:
         """Emit a snapshot of this element's visual state to the structure logger."""
         master:VisualStructure = self.master
         logger:logging.Logger = getattr(master, "logger", None)
@@ -480,9 +488,10 @@ class VisualElement(VGroup):
             if self.master:
                 self.master.log_event(_type="compare", other=other, result=result)
             if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-                
-                master_anim = self.master.compare(self, other, result=result)
-                self.master.play(master_anim)
+                if hasattr(self.master,"compare"):
+                    master_anim = self.master.compare(self, other, result=result)
+                    self.master.play(master_anim)
+    
         except ValueError: #Manim's internals cooking
             return NotImplemented
         finally:
