@@ -7,6 +7,26 @@ from Utils.logging_config import setup_logging
 from Utils.runtime import is_animating
 from Utils.utils import LazyAnimation,hop_element,slide_element
 class Entry(VisualElement):
+    """
+    Composite visual element representing one key/value pair in the hash table.
+
+    Parameters
+    ----------
+    master : VisualStructure | None
+        Owning structure (typically the `VisualHashTable`) responsible for playback/logging.
+    kv_pair : tuple[Any, Any]
+        `(key, value)` payload used to initialize the entry's cells.
+    hash : int | None
+        Precomputed bucket index for logging/debugging purposes.
+    label : str | None
+        Optional label propagated to the underlying `VisualElement`.
+    entry_height : int, optional
+        Height for both key and value cells (before scaling).
+    entry_width : int, optional
+        Total width of the entry; key consumes 25%, value 75%.
+    **kwargs :
+        Forwarded to the base `VisualElement` constructor (e.g., positioning).
+    """
     def __init__(self, master = None, kv_pair:tuple[Any,Any] = None,hash=None, label = None,
                  entry_height:int=1,entry_width:int=4,**kwargs):
         if kv_pair is None or not isinstance(kv_pair,tuple):
@@ -41,6 +61,26 @@ class Entry(VisualElement):
         return self.value_cell.set_value(value=value,color=color)
     
 class VisualHashTable(VisualStructure):
+    """
+    Visual representation of a dictionary that lays out entries by hashed bucket.
+
+    Parameters
+    ----------
+    data : dict
+        Initial key/value pairs to realize in the table.
+    scene : AlgoScene
+        Scene responsible for rendering and animation playback.
+    element_width : float, optional
+        Width allocated to each entry (passed down to `Entry`).
+    element_height : float, optional
+        Height allocated to each entry.
+    text_color : ManimColor, optional
+        Default text colour for value cells unless overridden.
+    label : str | None, optional
+        Optional label used in logs and overlays.
+    **kwargs :
+        Additional positioning arguments forwarded to `VisualStructure`.
+    """
     def __init__(self,data:dict,scene,element_width=4,element_height=1,text_color=WHITE,label=None,**kwargs):
         self.logger = setup_logging(logger_name="algomancer.hash_tables",output=False)
         super().__init__(scene,label,**kwargs)
@@ -50,7 +90,7 @@ class VisualHashTable(VisualStructure):
         self.element_width = element_width
         self.element_height = element_height
         self.text_color = WHITE
-        self.entries:dict[Any,Entry] = {} 
+        self.entries:dict[Any,Entry] = {} #Normal keys, self.elements stores by buckets(hashed key)
         self._instantialized = False
     def __len__(self):
         return len(self.entries)
@@ -88,17 +128,50 @@ class VisualHashTable(VisualStructure):
 
         return entry
     
+    def _highlight_entry(self,entry:Entry,color:ManimColor=YELLOW,opacity:float=0.5,runtime:float=0.5) -> AnimationGroup:
+        key_cell = super().highlight(element=entry.key_cell,color=color,opacity=opacity,runtime=runtime)
+        value_cell = super().highlight(element=entry.value_cell,color=color,opacity=opacity,runtime=runtime)
+        return AnimationGroup(key_cell,value_cell)
+    
+    def _unhighlight_entry(self,entry:Entry,runtime:float=0.5) -> AnimationGroup:
+        key_cell = super().unhighlight(element=entry.key_cell,runtime=runtime)
+        value_cell = super().unhighlight(element=entry.value_cell,runtime=runtime)
+        return AnimationGroup(key_cell,value_cell)
+    
+    def highlight(self, element:VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod|AnimationGroup:
+        if isinstance(element,Entry):
+            return self._highlight_entry(entry=element,color=color,opacity=opacity,runtime=runtime)
+        return super().highlight(element, color, opacity, runtime)
+    
+    def unhighlight(self, element, runtime=0.5) -> ApplyMethod|AnimationGroup:
+        if isinstance(element,Entry):
+            return self._unhighlight_entry(entry=element,runtime=runtime)
+        return super().unhighlight(element, runtime)
+    
+    
     def __getitem__(self, key):
         entry = self._get_entry(key=key)
         if self.scene and is_animating() and not self.scene.in_play:
-            self.play(self._highlight_entry(element=key))
+            anims = [
+            super().highlight(element=entry.key_cell, opacity=0.5, runtime=0.3),
+            super().unhighlight(element=entry.key_cell, opacity=0.5, runtime=0.2),
+            super().highlight(element=entry.value_cell, opacity=0.5, runtime=0.3),
+            super().unhighlight(element=entry.value_cell, opacity=0.5, runtime=0.2),
+        ]
+            self.play(Succession(*anims))
         return entry
     def __setitem__(self, key, value):
         entry = self._get_entry(key=key)
         self.play(entry.set_value(value=value))
         if self.scene and is_animating() and not self.scene.in_play:
-            self.play(self._highlight_entry(element=key))
-            
+            anims = [
+            super().highlight(element=entry.key_cell, opacity=0.5, runtime=0.3),
+            super().unhighlight(element=entry.key_cell, opacity=0.5, runtime=0.2),
+            super().highlight(element=entry.value_cell, opacity=0.5, runtime=0.3),
+            super().unhighlight(element=entry.value_cell, opacity=0.5, runtime=0.2),
+        ]
+            self.play(Succession(*anims))
+        
     def pop(self,key:Any|Entry,default=None,runtime=0.5) -> Any:
         keys = list(self.entries)
         mid = len(keys) // 2
@@ -121,12 +194,12 @@ class VisualHashTable(VisualStructure):
                 raise e
             
         popped_cell_index = keys.index(popped_entry.key)
-        if popped_cell_index <= mid:
+        if popped_cell_index <= mid: #Shift rightwards
             for idx in range(popped_cell_index - 1,-1,-1):
                 from_key:Entry = self._get_entry(keys[idx])
                 to_key:Entry = self._get_entry(keys[idx + 1])
                 anims.append(slide_element(element=from_key,target_pos=to_key.center))
-        else:
+        else: #Shift leftwards
             for idx in range(popped_cell_index + 1,len(keys)):
                 from_key:Entry = self._get_entry(keys[idx])
                 to_key:Entry = self._get_entry(keys[idx - 1])
@@ -151,26 +224,15 @@ class VisualHashTable(VisualStructure):
             entry.value = entry.value_cell.value
 
             self.logger.debug("hash_table.set_value key=%s value=%s", key, entry.value)
-
-            if self.scene and is_animating() and self.scene.in_play:
-                return Succession(self._highlight_entry(key), transform)
             return transform
 
         return LazyAnimation(builder=build)
     
+    
         
     
     
-    def _highlight_entry(self, element: Any | Entry, color: ManimColor = YELLOW, opacity: float = 0.5):
-        """Sequentially highlight key then value cells for the targeted entry."""
-        entry = element if isinstance(element, Entry) else self._get_entry(element)
-        anims = [
-            super().highlight(element=entry.key_cell, color=color, opacity=opacity, runtime=0.3),
-            super().unhighlight(element=entry.key_cell, color=color, opacity=opacity, runtime=0.2),
-            super().highlight(element=entry.value_cell, color=color, opacity=opacity, runtime=0.3),
-            super().unhighlight(element=entry.value_cell, color=color, opacity=opacity, runtime=0.2),
-        ]
-        return Succession(*anims)
+    
     
     
     def create(self,entries:list[Entry]=None,runtime:float=0.5):
