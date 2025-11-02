@@ -8,6 +8,8 @@ import numpy as np
 from typing import TYPE_CHECKING
 from screeninfo import get_monitors
 from Components.logging import setup_logging
+from Components.animations import LazyAnimation
+from Components.helpers import flatten_array
 if TYPE_CHECKING:
     from Structures.base import VisualStructure
 
@@ -51,33 +53,42 @@ def is_animating() -> bool:
 
 class AlgoScene(Scene):
     """Scene subclass that tracks play state, registered structures, and drag-scaling."""
-    
+
     _inside_play_call = False
-    def __init__(self, renderer = None, camera_class = None, always_update_mobjects = False, random_seed = None, skip_animations = False):
+
+    def __init__(
+        self,
+        renderer=None,
+        camera_class=None,
+        always_update_mobjects=False,
+        random_seed=None,
+        skip_animations=False,
+    ):
         self.logger = setup_logging(logger_name=__name__)
         super().__init__(renderer, camera_class, always_update_mobjects, random_seed, skip_animations)
         self._trace = []
-        self._structures:weakref.WeakValueDictionary[int,VisualStructure] = weakref.WeakValueDictionary()
+        self._structures: weakref.WeakValueDictionary[int, VisualStructure] = weakref.WeakValueDictionary()
         self._active_structure = None
+        self.player = PlayManager(scene=self)
+
     @contextlib.contextmanager
     def animation_context(self):
-        #Do this so the user doesn't need to import the other one but simply call self.animation_context()
+        # Do this so the user doesn't need to import the other one but simply call self.animation_context()
         with animation_context():
-            yield 
-
-    def play(self, *args, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
-        type(self)._inside_play_call = True 
-        try:
-            super().play(*args, **kwargs)
-        finally:
-            type(self)._inside_play_call = False
+            yield
 
     @property
-    def in_play(self): #convinience lol
+    def in_play(self):  # convenience lol
         return self._inside_play_call
+
+    def play(self, *anims, **kwargs):
+        return self.player.play(*anims, source=None, **kwargs)
+
+    def _play_direct(self, *anims, **kwargs):
+        return super().play(*anims, **kwargs)
     
     def register_structure(self,structure:VisualStructure) -> None:
-        """Remember a structure so we can find it later during cursor hit-tests."""
+        """Remember a structure so we can find it later."""
         self._structures[id(structure)] = structure
     
     def get_structure_under_cursor(self,point) -> VisualStructure:
@@ -167,3 +178,22 @@ class AlgoScene(Scene):
 def get_current_line_metadata() :
     return CURRENT_LINE.get()
 
+class PlayManager:
+    def __init__(self,scene:AlgoScene,**kwargs):
+        self.scene = scene
+        
+    def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
+        type(self.scene)._inside_play_call = True 
+        try:
+            resolved = []
+            for anim in flatten_array(result=[],objs=anims):
+                if not anim:
+                    continue
+                anim = anim.build() if isinstance(anim, LazyAnimation) else anim
+                if not isinstance(anim, Animation):
+                    raise TypeError(f"Unexpected {type(anim)} passed to play()")
+                resolved.append(anim)
+            if resolved:
+                self.scene._play_direct(*resolved, **kwargs)
+        finally:
+            type(self.scene)._inside_play_call = False

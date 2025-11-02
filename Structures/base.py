@@ -59,8 +59,7 @@ class VisualStructure(VGroup):
     def __len__(self):
         return len(self.elements)
     
-    # def __hash__(self): #Python removes this when you override comparasions(__eq__,..) for whatever reason
-    #     return id(self)
+   
     
 
         
@@ -68,19 +67,10 @@ class VisualStructure(VGroup):
         """Recursive play: handles single or multiple animations\n
         Can accept either an array or multiple comma-seperated animations
         """
-
-        
         scene = self.scene
         if not scene:
             raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
-        for anim in flatten_array(result=[],objs=anims):
-            #Checks if it's a builder animation or just plain animation
-            if anim:
-                anim = anim.build() if isinstance(anim,LazyAnimation) else anim
-                if not isinstance(anim,Animation):
-                    raise TypeError(f"Unexpected {type(anim)} passed to play()")
-                scene.play(anim, **kwargs)
-                
+        scene.player.play(*anims, source=self, **kwargs)
         for element in self.elements: 
             if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
                 element.master = self
