@@ -92,10 +92,12 @@ class VisualStructure(VGroup):
 
         # Case 2: already a Cell 
         elif isinstance(cell_or_index, VisualElement):
-            if not any(c is cell_or_index for c in self.elements): #This is used because 'in' calls __eq__ -> Inf Recursion
-                raise ValueError(
-                    f"Cell object does not belong to this {self.__class__.__name__}."
-                )
+            if cell_or_index.master is not self:
+                # Fall back to identity check in case master references drifted
+                if not any(c is cell_or_index for c in self.elements):
+                    raise ValueError(
+                        f"Cell object does not belong to this {self.__class__.__name__}."
+                    )
             return cell_or_index
         
         elif isinstance(cell_or_index, Pointer):
@@ -175,35 +177,6 @@ class VisualStructure(VGroup):
         if scene is not None:
             scene._trace.append(event)
 
-    def log_state(
-        self,
-        label: str = "state",
-        elements: list["VisualElement"] | None = None,
-        level: str = "debug",
-    ) -> None:
-        """Debug helper that logs the structure and its elements' visual state."""
-        logger = getattr(self, "logger", None)
-        if logger is None:
-            return
-        log_fn = getattr(logger, level.lower(), None) or logger.debug
-
-        struct_payload = {
-            "label": label,
-            "type": type(self).__name__,
-            "id": hex(id(self)),
-            "pos": np.array2string(self.get_center(), precision=3) if hasattr(self, "get_center") else None,
-            "z_index": getattr(self, "z_index", None),
-            "submobjects": [type(sm).__name__ for sm in self.submobjects],
-            "element_count": len(self.elements),
-        }
-        #Pretty print to put the attrbutes on seperate lines with indent
-        log_fn("structure.state %s\n%s", label, pformat(struct_payload, indent=2, width=120))
-
-        targets = elements if elements is not None else self.elements
-        for idx, element in enumerate(flatten_array(result=[],objs=targets)):
-            if isinstance(element, VisualElement):
-                element.master = element.master or self
-                element.log_state(label=f"{label}.element[{idx}]", level=level)
 
     @property
     def scene(self):
@@ -409,33 +382,7 @@ class VisualElement(VGroup):
         if hasattr(mobj, "get_opacity"): state["opacity"] = float(mobj.get_opacity())
         return state
 
-    def log_state(self, label: str = "state", level: str = "debug",depth:int = 2) -> None:
-        """Emit a snapshot of this element's visual state to the structure logger."""
-        master:VisualStructure = self.master
-        logger:logging.Logger = getattr(master, "logger", None)
-        if logger is None:
-            return
-        log_fn = getattr(logger, level.lower(), None) or logger.debug
-
-        index = None
-        elements = getattr(master, "elements", None)
-        if elements:
-            for idx, el in enumerate(elements):
-                if el is self:
-                    index = idx
-                    break
-
-        payload = {
-            "label": label,
-            "index": index,
-            "value": getattr(self, "value", None),
-            "z_index": getattr(self, "z_index", None),
-            "opacity": getattr(self, "opacity", None),
-            "submobjects": [type(sm).__name__ for sm in self.submobjects],
-            "body": self.get_mobject_state(getattr(self, "body", None)),
-            "text": self.get_mobject_state(getattr(self, "text", None)),
-        }
-        log_fn("element.state %s\n%s", label, pformat(payload, indent=2, width=120))
+    # log_state methods removed; use Components.logging.DebugLogger instead.
 
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
