@@ -2,7 +2,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
-from typing import Any,TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from pprint import pformat
 if TYPE_CHECKING:
     from Structures.base import VisualElement,VisualStructure
@@ -20,8 +20,9 @@ class DebugLogger:
 
     Parameters
     ----------
-    logger_name : str
-        Namespace for the underlying logger (e.g., "algomancer.arrays").
+    logger_name : str | None
+        Namespace for the underlying logger (e.g., "Structures.arrays").
+        Defaults to the module name of this wrapper when ``None``.
     output : bool
         When True, also attach a stream handler for console output.
 
@@ -32,7 +33,7 @@ class DebugLogger:
     - log_element_state(element, label="state", level="debug", depth=2)
       Logs a detailed snapshot of a single visual element.
     """
-    def __init__(self,logger_name: str = "algomancer", output: bool = True) -> None:
+    def __init__(self, logger_name: str | None = None, output: bool = True) -> None:
         """Configure root handlers once and return the requested logger."""
         global LOGGING_READY
         if not LOGGING_READY:
@@ -41,7 +42,7 @@ class DebugLogger:
             print(env_path)
             load_dotenv(env_path)
             os.makedirs("DEBUG",exist_ok=True)
-            logging_level = os.getenv("LOGGING_LEVEL").upper()
+            logging_level = (os.getenv("LOGGING_LEVEL") or "INFO").upper()
             level = getattr(logging,logging_level,logging.INFO)
             handlers = [
                 RotatingFileHandler(
@@ -56,17 +57,18 @@ class DebugLogger:
                 handlers.append(logging.StreamHandler())
             logging.basicConfig(
                 level=level,
-                format="%(asctime)s %(levelname)s %(message)s",
+                format="%(asctime)s %(levelname)s %(name)s %(message)s",
                 handlers=handlers,
                 force=True,
             )
 
-        self.logger = logging.getLogger(logger_name)
+        name = logger_name or __name__
+        self.logger = logging.getLogger(name)
         if not LOGGING_READY:
             self.logger.info("Algomancer run initialized…")
             LOGGING_READY = True
         self.logger.info("=" * 60)
-        self.logger.info("Run started for %s", logger_name)
+        self.logger.info("Run started for %s", name)
         
     def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self.logger.debug(msg, *args, **kwargs)

@@ -39,7 +39,7 @@ _OPS = {
 }
 
 
-def get_operation(symbol: str) -> Callable[..., Any]:
+def get_operation(op: str) -> Callable[..., Any]:
     """
     Retrieve a Python operator function based on its symbol.
 
@@ -67,9 +67,9 @@ def get_operation(symbol: str) -> Callable[..., Any]:
     5
     """
     try:
-        return _OPS[symbol]
+        return _OPS[op]
     except KeyError as exc:
-        raise ValueError(f"Unsupported operator: {symbol!r}") from exc
+        raise ValueError(f"Unsupported operator: {op!r}") from exc
 
 
 def resolve_value(obj):
