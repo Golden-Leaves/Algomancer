@@ -7,7 +7,7 @@ import weakref
 import numpy as np
 from typing import TYPE_CHECKING
 from screeninfo import get_monitors
-from Components.logging import setup_logging
+from Components.logging import DebugLogger
 from Components.animations import LazyAnimation
 from Components.helpers import flatten_array
 if TYPE_CHECKING:
@@ -35,7 +35,10 @@ def animation_context():
     def tracer(frame, event, arg):
         if event == "line":
             code = frame.f_code
-            CURRENT_LINE.set((code.co_filename, frame.f_lineno, code.co_name))
+            line_number = frame.f_lineno
+            filename = code.co_filename
+            function_name = code.co_name
+            CURRENT_LINE.set((filename, line_number, function_name))
         return tracer
 
     try:
@@ -64,7 +67,7 @@ class AlgoScene(Scene):
         random_seed=None,
         skip_animations=False,
     ):
-        self.logger = setup_logging(logger_name=__name__)
+        self.logger = DebugLogger(logger_name=__name__)
         super().__init__(renderer, camera_class, always_update_mobjects, random_seed, skip_animations)
         self._trace = []
         self._structures: weakref.WeakValueDictionary[int, VisualStructure] = weakref.WeakValueDictionary()
@@ -81,10 +84,11 @@ class AlgoScene(Scene):
     def in_play(self):  # convenience lol
         return self._inside_play_call
 
-    def play(self, *anims, **kwargs):
+    def play(self, *anims, **kwargs): 
+        self.logger.info(anims)
         return self.player.play(*anims, source=None, **kwargs)
 
-    def _play_direct(self, *anims, **kwargs):
+    def _play_direct(self, *anims, **kwargs):#play() is overidden so PlayManager can't call that lol
         return super().play(*anims, **kwargs)
     
     def register_structure(self,structure:VisualStructure) -> None:
@@ -181,19 +185,21 @@ def get_current_line_metadata() :
 class PlayManager:
     def __init__(self,scene:AlgoScene,**kwargs):
         self.scene = scene
+        self.logger = DebugLogger(logger_name=f"{__name__}.PlayManager")
         
     def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         type(self.scene)._inside_play_call = True 
         try:
             resolved = []
-            for anim in flatten_array(result=[],objs=anims):
+            for anim in flatten_array(result=[],objs=resolved):
                 if not anim:
                     continue
                 anim = anim.build() if isinstance(anim, LazyAnimation) else anim
                 if not isinstance(anim, Animation):
                     raise TypeError(f"Unexpected {type(anim)} passed to play()")
                 resolved.append(anim)
-            if resolved:
-                self.scene._play_direct(*resolved, **kwargs)
+            if anims:
+                self.logger.debug("List of animations(inside check): %s",anims)
+                self.scene._play_direct(*anims, **kwargs)
         finally:
             type(self.scene)._inside_play_call = False
