@@ -1,17 +1,13 @@
 from __future__ import annotations
 from manim import *
 import numpy as np
-from Components.animations import LazyAnimation
 from Components.events import Event
-from Components.helpers import flatten_array
 from Components.ops import get_operation, resolve_value
 from Components.runtime import AlgoScene, get_current_line_metadata, is_animating
+from Components.effects import EffectsManager
 from typing import Any, TYPE_CHECKING
-from pprint import pformat
 import contextvars
 import weakref
-if TYPE_CHECKING:
-    import logging
 _COMPARE_GUARD = contextvars.ContextVar("_COMPARE_GUARD", default=False)
 
 
@@ -51,16 +47,34 @@ class VisualStructure(VGroup):
                 self.pos = np.array([x,y,z])
         self._scene_ref = weakref.ref(scene) if scene else None
         self.label = label if label else ""
-        self.elements:list[VisualElement] = []
+        self.elements: list[VisualElement] = []
         self._trace = []
+        logger = getattr(self, "logger", None)
+        self.effects = EffectsManager(scene=scene, logger=logger)
         if scene is not None:
             scene.register_structure(self)
     
     def __len__(self):
         return len(self.elements)
-    
-   
-    
+
+    def highlight(self, element: "VisualElement", *, color: ManimColor = YELLOW,
+                opacity: float = 0.5, runtime: float = 0.5) -> ApplyMethod:
+        return self.effects.highlight(element, color=color, opacity=opacity, runtime=runtime)
+
+    def unhighlight(self, element: "VisualElement", *, runtime: float = 0.5) -> ApplyMethod:
+        return self.effects.unhighlight(element, runtime=runtime)
+
+    def indicate(self, element: "VisualElement", *, color: ManimColor = YELLOW,
+                scale_factor: float = 1.1, runtime: float = 0.5) -> Animation:
+        return self.effects.indicate(element, color=color, scale_factor=scale_factor, runtime=runtime)
+
+    def outline(self, element: "VisualElement", *, color: ManimColor = PURE_GREEN,
+                width: float = 6, runtime: float = 0.5) -> ApplyMethod:
+        return self.effects.outline(element, color=color, width=width, runtime=runtime)
+
+    def unoutline(self, element: "VisualElement", *, color: ManimColor = WHITE,
+                width: float = 4, runtime: float = 0.5) -> ApplyMethod:
+        return self.effects.unoutline(element, color=color, width=width, runtime=runtime)
 
         
     def play(self, *anims, **kwargs):
@@ -124,6 +138,11 @@ class VisualStructure(VGroup):
 
         elif isinstance(element, VisualElement):
             #manual identity comparison to avoid triggering __eq__()
+            owner = element.master
+            #Traverses up the heirarchy to find the elemnt's index
+            while not getattr(owner,"master",None) is not self and getattr(owner,"master",None) is not None:
+                owner = owner.master
+                
             for i, el in enumerate(elements):
                 if el is element:
                     return i
@@ -186,82 +205,6 @@ class VisualStructure(VGroup):
     def scene(self, new_scene):
         self._scene_ref = weakref.ref(new_scene) if new_scene else None
         
-    def highlight(self, element:int|VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod:
-        element_obj: VisualElement = self.get_element(element)
-        element_index = self.get_index(element_obj)
-        if hasattr(self, "logger"):
-            self.logger.info("highlight idx=%s color=%s opacity=%s", element_index, color, opacity)
-        self.log_event(
-            _type="highlight",
-            indices=[element_index],
-            value={"color": color, "opacity": opacity},
-            comment=f"highlight element[{element_index}]",
-        )
-        return ApplyMethod(element_obj.body.set_fill, color, opacity, run_time=runtime)
-
-    def unhighlight(self, element:int|VisualElement, runtime=0.5) -> ApplyMethod: 
-        element_obj: VisualElement = self.get_element(element)
-        element_index = self.get_index(element_obj)
-        if hasattr(self, "logger"):
-            self.logger.info("unhighlight idx=%s opacity=%s", element_index, 0.5)
-        self.log_event(
-            _type="unhighlight",
-            indices=[element_index],
-            value={"color": BLACK, "opacity": 0.5},
-            comment=f"clear highlight element[{element_index}]",
-        )
-        return ApplyMethod(element_obj.body.set_fill, BLACK,0.5, run_time=runtime)
-    
-    def indicate(self, element:int|VisualElement, color=YELLOW, scale_factor=1.1, runtime=0.5) -> Animation:
-        """
-        Makes an element "pulse"
-        """
-        element_obj: VisualElement = self.get_element(element)
-        element_index = self.get_index(element_obj)
-        if hasattr(self, "logger"):
-            self.logger.info("indicate idx=%s color=%s scale=%s", element_index, color, scale_factor)
-        target = getattr(element_obj, "body", element_obj)
-       
-        pulse = Indicate(target, color=color, scale_factor=scale_factor, run_time=runtime)
-
-        #Restore original stoke info
-        finalize = Wait(0)
-        _orig_finish = finalize.finish
-
-        def _finish_restore():
-            _orig_finish()
-            self.unhighlight(element=element, runtime=0)
-
-        finalize.finish = _finish_restore
-        return Succession(pulse, finalize)
-    
-    def outline(self, element:int|VisualElement, color=PURE_GREEN, width=6, runtime=0.5) -> ApplyMethod:
-        element_obj: VisualElement = self.get_element(element)
-        element_body: Rectangle = element_obj.body
-        element_index = self.get_index(element_obj)
-        if hasattr(self, "logger"):
-            self.logger.info("outline idx=%s color=%s width=%s", element_index, color, width)
-        self.log_event(
-            _type="outline",
-            indices=[element_index],
-            value={"color": color, "width": width},
-            comment=f"outline element[{element_index}]",
-        )
-        return ApplyMethod(element_body.set_stroke, color, width, 1.0, run_time=runtime)
-
-    def unoutline(self, element:int|VisualElement, color=WHITE, width=4, runtime=0.5) -> ApplyMethod:
-        element_obj: VisualElement = self.get_element(element)
-        element_body: Rectangle = element_obj.body
-        element_index = self.get_index(element_obj)
-        if hasattr(self, "logger"):
-            self.logger.info("unoutline idx=%s color=%s width=%s", element_index, color, width)
-        self.log_event(
-            _type="unoutline",
-            indices=[element_index],
-            value={"color": color, "width": width},
-            comment=f"clear outline element[{element_index}]",
-        )
-        return ApplyMethod(element_body.set_stroke, color, width, 1.0, run_time=runtime)
 class VisualElement(VGroup):
     r"""Fundamental visual building-block managed by a :class:`VisualStructure`.
 
@@ -339,11 +282,6 @@ class VisualElement(VGroup):
     def __hash__(self):
         return id(self)
         
-    def restore_visual_state(self):
-        """Reset text style after animations that might dim it."""
-        if hasattr(self, "text"):
-            self.text.set_color(self._base_text_color)
-            self.text.set_opacity(1.0)
     @staticmethod
     def get_mobject_state(mobj: Mobject | None, depth: int = 1) -> dict[str, Any]:
         """Return a snapshot of a Manim mobject's visual attributes."""
@@ -382,7 +320,7 @@ class VisualElement(VGroup):
         if hasattr(mobj, "get_opacity"): state["opacity"] = float(mobj.get_opacity())
         return state
 
-    # log_state methods removed; use Components.logging.DebugLogger instead.
+  
 
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
@@ -398,7 +336,7 @@ class VisualElement(VGroup):
         operation = get_operation(op=op)
         result = operation(self.value,other_value)
 
-        # DEBUG: concise visual state (index, text/body opacity, body z-index)
+        # DEBUG
         if getattr(self, "master", None) is not None and hasattr(self.master, "logger"):
             idx = None
             if hasattr(self.master, "elements") and self.master.elements is not None:
