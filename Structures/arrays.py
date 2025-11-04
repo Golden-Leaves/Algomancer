@@ -4,7 +4,7 @@ import numpy as np
 from manim import *
 from Components.animations import LazyAnimation, hop_element, slide_element
 from Components.geometry import get_offset_position
-from Components.logging import setup_logging
+from Components.logging import DebugLogger
 from Components.runtime import AlgoScene, is_animating
 from Structures.base import VisualStructure,VisualElement
 from Structures.pointers import Pointer
@@ -108,7 +108,7 @@ class VisualArray(VisualStructure):
               Coordinates for the array’s center if `pos` is not provided.  
               Defaults to ORIGIN on each axis.
         """
-        self.logger = setup_logging(logger_name="algomancer.arrays",output=False)
+        self.logger = DebugLogger(logger_name=__name__, output=False)
         self._raw_data = data #The original structure the user passed in, maybe don't touch this beyond create()
         self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)

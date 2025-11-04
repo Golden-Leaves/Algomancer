@@ -1,7 +1,7 @@
 from manim import *
 from Structures.base import VisualStructure,VisualElement
 from Components.geometry import get_offset_position
-from Components.logging import setup_logging
+from Components.logging import DebugLogger
 from Components.ops import get_operation
 from Components.runtime import is_animating
 import numpy as np
@@ -29,7 +29,7 @@ class Pointer(VisualElement):
     """
     _next_id = 0
     def __init__(self,value:int,master:VisualStructure,label:str = "",color=YELLOW,direction:np.ndarray=UP,**kwargs):
-        self.logger = setup_logging("algomancer.pointers",output=False)
+        self.logger = DebugLogger(__name__, output=False)
         self.id = Pointer._next_id
         self.size = kwargs.pop("size",1)
         type(self)._next_id += 1 #Polymorphism-friendly, since it calls the class that inherited and not Pointer if that's the case
@@ -115,6 +115,7 @@ class Pointer(VisualElement):
         if not isinstance(other, int):
             return NotImplemented
         operation = get_operation(op=op)
+        #If i = 2, we want 1 + i = 3, 1 is our main object here and not the pointer, hence other_on_left
         new_index = operation(other, self.value) if other_on_left else operation(self.value, other)
 
         if mutate: #For self-assignement operations

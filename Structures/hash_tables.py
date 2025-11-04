@@ -4,7 +4,7 @@ from typing import Any
 from Structures.arrays import Cell
 from Structures.base import VisualStructure,VisualElement
 from Components.animations import LazyAnimation, hop_element, slide_element
-from Components.logging import setup_logging
+from Components.logging import DebugLogger
 from Components.runtime import is_animating
 class Entry(VisualElement):
     """
@@ -82,7 +82,7 @@ class VisualHashTable(VisualStructure):
         Additional positioning arguments forwarded to `VisualStructure`.
     """
     def __init__(self,data:dict,scene,element_width=4,element_height=1,text_color=WHITE,label=None,**kwargs):
-        self.logger = setup_logging(logger_name="algomancer.hash_tables",output=False)
+        self.logger = DebugLogger(logger_name=__name__, output=False)
         super().__init__(scene,label,**kwargs)
         self._raw_data = data
         self._bucket_count = max(1,len(data)) #Division by 0...
@@ -138,12 +138,14 @@ class VisualHashTable(VisualStructure):
         value_cell = super().unhighlight(element=entry.value_cell,runtime=runtime)
         return AnimationGroup(key_cell,value_cell)
     
-    def highlight(self, element:VisualElement, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod|AnimationGroup:
+    def highlight(self, element:VisualElement|Any, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod|AnimationGroup:
+        element = self._get_entry(key=element)
         if isinstance(element,Entry):
             return self._highlight_entry(entry=element,color=color,opacity=opacity,runtime=runtime)
         return super().highlight(element, color, opacity, runtime)
     
     def unhighlight(self, element, runtime=0.5) -> ApplyMethod|AnimationGroup:
+        element = self._get_entry(key=element)
         if isinstance(element,Entry):
             return self._unhighlight_entry(entry=element,runtime=runtime)
         return super().unhighlight(element, runtime)
