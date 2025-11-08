@@ -10,6 +10,7 @@ from screeninfo import get_monitors
 from Components.logging import DebugLogger
 from Components.animations import LazyAnimation
 from Components.helpers import flatten_array
+from Components.config import DEFAULT_CONFIG as CFG
 if TYPE_CHECKING:
     from Structures.base import VisualStructure
 
@@ -19,10 +20,10 @@ def compute_window_size(scale: float = 0.75) -> tuple[int, int]:
       height = int(monitor.height * scale)
       return width, height
 
-config.pixel_width = 1920
-config.pixel_height = 1080
+config.pixel_width = CFG.render.pixel_width
+config.pixel_height = CFG.render.pixel_height
 config.window_size = compute_window_size(0.75)  #75% of the screen
-config.samples=1
+config.samples=CFG.render.samples
 
 ANIMATION_CONTEXT = contextvars.ContextVar("ANIMATION_CONTEXT", default=False) 
 CURRENT_LINE = contextvars.ContextVar("CURRENT_LINE", default=None)
@@ -72,11 +73,11 @@ class AlgoScene(Scene):
         self._trace = []
         self._structures: weakref.WeakValueDictionary[int, VisualStructure] = weakref.WeakValueDictionary()
         self._active_structure = None
-        self.player = PlayManager(scene=self)
+        self.player = PlaybackController(scene=self)
 
     @contextlib.contextmanager
     def animation_context(self):
-        # Do this so the user doesn't need to import the other one but simply call self.animation_context()
+        #Do this so the user doesn't need to import the other one but simply call self.animation_context()
         with animation_context():
             yield
 
@@ -88,7 +89,7 @@ class AlgoScene(Scene):
         self.logger.info(anims)
         return self.player.play(*anims, source=None, **kwargs)
 
-    def _play_direct(self, *anims, **kwargs):#play() is overidden so PlayManager can't call that lol
+    def _play_direct(self, *anims, **kwargs):#play() is overidden so PlaybackController can't call that lol
         return super().play(*anims, **kwargs)
     
     def register_structure(self,structure:VisualStructure) -> None:
@@ -133,7 +134,7 @@ class AlgoScene(Scene):
 
         if state:
             current_structure:VisualStructure = state["structure"]
-            print("Is structure_under_point the same as current_structure?",structure_under_point is current_structure)
+            # print("Is structure_under_point the same as current_structure?",structure_under_point is current_structure)
             if structure_under_point is not current_structure:
                 self._end_drag()
                 state = None
@@ -182,24 +183,29 @@ class AlgoScene(Scene):
 def get_current_line_metadata() :
     return CURRENT_LINE.get()
 
-class PlayManager:
+class PlaybackController:
     def __init__(self,scene:AlgoScene,**kwargs):
+        self.paused = False
         self.scene = scene
-        self.logger = DebugLogger(logger_name=f"{__name__}.PlayManager")
+        self.logger = DebugLogger(logger_name=f"{__name__}.PlaybackController")
         
     def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         type(self.scene)._inside_play_call = True 
         try:
             resolved = []
-            for anim in flatten_array(result=[],objs=resolved):
+            for anim in flatten_array(result=[],objs=anims):
                 if not anim:
                     continue
                 anim = anim.build() if isinstance(anim, LazyAnimation) else anim
                 if not isinstance(anim, Animation):
                     raise TypeError(f"Unexpected {type(anim)} passed to play()")
-                resolved.append(anim)
-            if anims:
-                self.logger.debug("List of animations(inside check): %s",anims)
-                self.scene._play_direct(*anims, **kwargs)
+                self.scene._play_direct(anim)
+                # resolved.append(anim)
+            if resolved:
+                self.logger.debug("List of animations(inside check): %s", resolved)
+                # self.scene._play_direct(*resolved, **kwargs)
         finally:
             type(self.scene)._inside_play_call = False
+    def pause(): pass
+    def resume(): pass
+    def step_frames(n:int=1): pass
