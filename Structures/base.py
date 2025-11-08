@@ -50,30 +50,51 @@ class VisualStructure(VGroup):
         self.elements: list[VisualElement] = []
         self._trace = []
         logger = getattr(self, "logger", None)
-        self.effects = EffectsManager(scene=scene, logger=logger)
+        self.effects = EffectsManager(logger=logger)
         if scene is not None:
             scene.register_structure(self)
+    
+    def add(self, *mobjects):
+        """Ensure Manim duplicate checks use identity, not value-based equality."""
+        token = _COMPARE_GUARD.set(True)
+        try:
+            return super().add(*mobjects)
+        finally:
+            _COMPARE_GUARD.reset(token)
+
+    def remove(self, *mobjects):
+        """Mirror add-guarding when removing so equality hooks stay inert."""
+        token = _COMPARE_GUARD.set(True)
+        try:
+            return super().remove(*mobjects)
+        finally:
+            _COMPARE_GUARD.reset(token)
     
     def __len__(self):
         return len(self.elements)
 
-    def highlight(self, element: "VisualElement", *, color: ManimColor = YELLOW,
-                opacity: float = 0.5, runtime: float = 0.5) -> ApplyMethod:
+    def highlight(self, element: "VisualElement|int", *, color: ManimColor = YELLOW,
+                opacity: float | None = None, runtime: float = 0.5) -> ApplyMethod:
+        element = self.get_element(element) if isinstance(element, int) else element
         return self.effects.highlight(element, color=color, opacity=opacity, runtime=runtime)
 
-    def unhighlight(self, element: "VisualElement", *, runtime: float = 0.5) -> ApplyMethod:
-        return self.effects.unhighlight(element, runtime=runtime)
+    def unhighlight(self, element: "VisualElement|int", *, opacity: float | None = None, runtime: float = 0.5) -> ApplyMethod:
+        element = self.get_element(element) if isinstance(element, int) else element
+        return self.effects.unhighlight(element, opacity=opacity, runtime=runtime)
 
-    def indicate(self, element: "VisualElement", *, color: ManimColor = YELLOW,
+    def indicate(self, element: "VisualElement|int", *, color: ManimColor = YELLOW,
                 scale_factor: float = 1.1, runtime: float = 0.5) -> Animation:
+        element = self.get_element(element) if isinstance(element, int) else element
         return self.effects.indicate(element, color=color, scale_factor=scale_factor, runtime=runtime)
 
-    def outline(self, element: "VisualElement", *, color: ManimColor = PURE_GREEN,
+    def outline(self, element: "VisualElement|int", *, color: ManimColor = PURE_GREEN,
                 width: float = 6, runtime: float = 0.5) -> ApplyMethod:
+        element = self.get_element(element) if isinstance(element, int) else element
         return self.effects.outline(element, color=color, width=width, runtime=runtime)
 
-    def unoutline(self, element: "VisualElement", *, color: ManimColor = WHITE,
+    def unoutline(self, element: "VisualElement|int", *, color: ManimColor = WHITE,
                 width: float = 4, runtime: float = 0.5) -> ApplyMethod:
+        element = self.get_element(element) if isinstance(element, int) else element
         return self.effects.unoutline(element, color=color, width=width, runtime=runtime)
 
         
@@ -83,8 +104,8 @@ class VisualStructure(VGroup):
         """
         scene = self.scene
         if not scene:
-            raise RuntimeError("No Scene bound. Pass scene=... when creating VisualArray.")
-        scene.player.play(*anims, source=self, **kwargs)
+            raise RuntimeError("No Scene bound. Pass scene=... when creating VisualStructure.")
+        scene.player.play(*anims, source=None, **kwargs)
         for element in self.elements: 
             if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
                 element.master = self
@@ -363,9 +384,10 @@ class VisualElement(VGroup):
             if self.master:
                 self.master.log_event(_type="compare", other=other, result=result)
             if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-                if hasattr(self.master,"compare"):
-                    master_anim = self.master.compare(self, other, result=result)
-                    self.master.play(master_anim)
+                if hasattr(self.master, "effects") and hasattr(self.master.effects, "compare"):
+                    master_anim = self.master.effects.compare(self, other, result=result)
+                    if master_anim:
+                        self.master.play(*master_anim)
     
         except ValueError: #Manim's internals cooking
             return NotImplemented
@@ -464,22 +486,25 @@ class VisualElement(VGroup):
             self.master.log_event(_type=f"arithmetic-{op}", result=result)
 
         if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            anims = []
-            master_anim = AnimationGroup(
+            master_anim = [ #TODO:Weird text dimming bug occurs if we use Succession or AnimationGroup, that's why a list is used
                 self.master.highlight(self, color=color, runtime=0.1),
                 self.master.indicate(self, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
                 self.master.unhighlight(self, runtime=0.15),
-            )
-            anims.append(master_anim)
-            if isinstance(other,VisualElement) and getattr(other,"master",None) is not None : #Plays an animation if other is an element
-                other_anim = AnimationGroup(
-                    other.master.highlight(self, color=color, runtime=0.1),
-                    other.master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
-                    other.master.unhighlight(self, runtime=0.15),
-                )
-                anims.append(other_anim)
-            
-            self.master.play(AnimationGroup(*anims))
+            ]
+            self.master.play(*master_anim)
+
+            if isinstance(other, VisualElement):
+                other_master:VisualStructure = getattr(other, "master", None)
+                if other_master and other_master.scene and is_animating() is self.master.scene:
+                    other_anim = [
+                        other_master.highlight(other, color=color, runtime=0.1),
+                        other_master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
+                        other_master.unhighlight(other, runtime=0.15),
+                    ]
+                    if other_master is self.master:
+                        self.master.play(*other_anim)
+                    else:
+                        other_master.play(*other_anim)
         return result
     def __add__(self, other):
         return self._arith(other=other,op="+")

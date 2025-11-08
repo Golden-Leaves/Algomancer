@@ -20,7 +20,7 @@ class Cell(VisualElement):
         corner_radius = 0.3 if rounded else 0
         self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
                 Rectangle(width=cell_width, height=cell_height))
-        self.body.set_fill(BLACK, opacity=0.5)
+        self.body.set_fill(BLACK, opacity=1.0)
         if not border:
             self.body.set_stroke(opacity=0)
         self.value = value
@@ -135,13 +135,13 @@ class VisualArray(VisualStructure):
 
             
     def __getitem__(self, index):
+        self.logger.debug("__getitem__ at index=%s",index)
         self.log_event(_type="get",indices=[index],comment=f"Accessing index {index}")
         if isinstance(index, Pointer):
             return self.elements[index.value]
-        
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
-            anim = Succession(self.highlight(index,runtime=0.2),Wait(0.1),self.unhighlight(index,runtime=0.2))
-            self.play(anim)
+            # self.play(Succession(self.highlight(index,runtime=0.2),Wait(0.1),self.unhighlight(index,runtime=0.2)))
+            self.play([self.highlight(index,runtime=0.2),self.unhighlight(index,runtime=0.2)])
         return self.get_element(index)
     
     def __setitem__(self, index, value):
@@ -234,57 +234,7 @@ class VisualArray(VisualStructure):
             self.logger.debug("array.set_value index=%s value=%s", idx_num, element_value)
             return animation
         return LazyAnimation(builder=build)
-    
-    def compare(self,index_1:int|Cell,index_2:int|Cell,result:bool=True,scalar=False) -> Succession:
-        if scalar:
-            return Wait(0)
-        
-        cell_1, cell_2 = self.get_element(index_1), self.get_element(index_2) 
 
-        i1 = self.get_index(cell_1)
-        i2 = self.get_index(cell_2)
-        b1, t1 = getattr(cell_1, "body", None), getattr(cell_1, "text", None)
-        b2, t2 = getattr(cell_2, "body", None), getattr(cell_2, "text", None)
-        self.logger.debug(
-            "array.compare.visual i=%s text_opacity=%s body_opacity=%s z_body=%s",
-            i1,
-            (
-                t1.get_fill_opacity() if (t1 is not None and hasattr(t1, "get_fill_opacity"))
-                else getattr(t1, "fill_opacity", None)
-            ),
-            getattr(b1, "fill_opacity", None),
-            getattr(b1, "z_index", None),
-        )
-        self.logger.debug(
-            "array.compare.visual j=%s text_opacity=%s body_opacity=%s z_body=%s",
-            i2,
-            (
-                t2.get_fill_opacity() if (t2 is not None and hasattr(t2, "get_fill_opacity"))
-                else getattr(t2, "fill_opacity", None)
-            ),
-            getattr(b2, "fill_opacity", None),
-            getattr(b2, "z_index", None),
-        )
-        color = GREEN if result else RED
-        scale = 1.08 if result else 1.15  # slightly larger pulse for "swap"   
-        
-
-        highlight = AnimationGroup(
-            self.highlight(element=cell_1,color=color,runtime=0.2),
-            self.highlight(element=cell_2,color=color,runtime=0.2)
-        )  
-        pulse = AnimationGroup(
-            self.indicate(element=cell_1,scale_factor=scale,color=color,runtime=0.2),
-            self.indicate(element=cell_2,scale_factor=scale,color=color,runtime=0.2),
-        )
-        unhighlight = AnimationGroup(
-            self.unhighlight(element=cell_1,runtime=0.2),
-            self.unhighlight(element=cell_2,runtime=0.2),
-        )
-        self.logger.debug("array.compare i=%s j=%s result=%s", index_1, index_2, result)
-        return Succession(highlight,pulse,Wait(0.1),unhighlight)
-
-               
     def shift_cell(self,from_idx:int,to_idx:int) -> LazyAnimation:
         """
         Move the cell at from_idx to to_idx,
