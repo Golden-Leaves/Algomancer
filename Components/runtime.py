@@ -1,5 +1,7 @@
 from __future__ import annotations
 from manim import *
+from manim.renderer.opengl_renderer import OpenGLRenderer
+from manim.renderer.cairo_renderer import CairoRenderer
 import contextvars
 import contextlib
 import sys
@@ -73,7 +75,7 @@ class AlgoScene(Scene):
         self._trace = []
         self._structures: weakref.WeakValueDictionary[int, VisualStructure] = weakref.WeakValueDictionary()
         self._active_structure = None
-        self.player = PlaybackController(scene=self,controlled=True)
+        self.player = PlaybackController(scene=self)
 
     @contextlib.contextmanager
     def animation_context(self):
@@ -88,9 +90,6 @@ class AlgoScene(Scene):
     def play(self, *anims, **kwargs): 
         self.logger.info(anims)
         return self.player.play(*anims, source=None, **kwargs)
-
-    def _play_direct(self, *anims, **kwargs):#play() is overidden so PlaybackController can't call that lol
-        return super().play(*anims, **kwargs)
     
     def register_structure(self,structure:VisualStructure) -> None:
         """Remember a structure so we can find it later."""
@@ -184,15 +183,20 @@ def get_current_line_metadata() :
     return CURRENT_LINE.get()
 
 class PlaybackController:
-    def __init__(self,scene:AlgoScene,controlled=False,**kwargs):
+    def __init__(self,scene:AlgoScene,**kwargs):
         self.paused = False
         self.scene = scene
         self.logger = DebugLogger(logger_name=f"{__name__}.PlaybackController")
-        self.controlled = controlled
+        self.renderer: OpenGLRenderer | CairoRenderer = scene.renderer
     def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         import threading
+        import time
+        #Some functionality were taken from manim's repo
+        #https://github.com/ManimCommunity/manim/blob/main/manim
         def resolve_animations(animations:list[Animation|LazyAnimation]) -> list[Animation]:
-            """Return concrete Animation instances from mixed play() inputs."""
+            """Return Animation instances from mixed play() inputs.\n
+            Will raise `TypeError` if an entry can't be resolved
+            """
             resolved = []
             for anim in flatten_array(result=[],objs=animations):
                 if not anim:
@@ -204,16 +208,80 @@ class PlaybackController:
             if resolved:
                 self.logger.debug("List of animations(inside check): %s", resolved)
             return resolved
-        animations = resolve_animations(animations=anims)
-        type(self.scene)._inside_play_call = True 
-        if self.controlled:
-            try:
-                for anim in animations:
-                    self.scene._play_direct(anim)
-            finally:
-                type(self.scene)._inside_play_call = False
         
-           
+        def begin_animations(
+            scene:AlgoScene,renderer:CairoRenderer|OpenGLRenderer,
+            animations:list[Animation], **kwargs) -> None:
+            renderer.file_writer.begin_animation(not renderer.skip_animations)
+            scene.compile_animation_data(*animations,**kwargs)
+            scene.begin_animations()
+            
+        def finalize_animations(renderer:OpenGLRenderer|CairoRenderer,scene:AlgoScene) -> None:
+            renderer.file_writer.end_animation(not renderer.skip_animations)
+            renderer.time += scene.duration
+            renderer.num_plays += 1
+        def render_frozen_frame(renderer: OpenGLRenderer | CairoRenderer, scene: AlgoScene) -> None:
+                """Render a single frozen frame, duplicating it to match scene.duration.
+
+                Mirrors Manim's OpenGLRenderer.play frozen-frame branch
+                """
+                renderer.update_frame(scene)
+                if not renderer.skip_animations:
+                    renderer.file_writer.write_frame(
+                        renderer,
+                        num_frames=int(config.frame_rate * scene.duration),
+                    )
+                if renderer.window is not None:
+                    renderer.window.swap_buffers()
+                    while time.time() - renderer.animation_start_time < scene.duration:
+                        pass
+                renderer.animation_elapsed_time = scene.duration
+        def run_animation_loop(scene: AlgoScene, skip_rendering: bool = False) -> None:
+            """Advance animations for the given scene frame-by-frame and render each frame.
+
+            Mirrors Scene.play_internal() logic
+            """
+            assert scene.animations is not None
+            scene.duration = scene.get_run_time(scene.animations)
+            scene.time_progression = scene._get_animation_time_progression(
+                scene.animations,
+                scene.duration,
+            )
+            for t in scene.time_progression:  # Loading Animation
+                scene.update_to_time(t)
+                if not skip_rendering and not scene.skip_animation_preview:
+                    scene.renderer.render(scene, t, scene.moving_mobjects)
+                if scene.stop_condition is not None and scene.stop_condition():
+                    scene.time_progression.close()
+                    break
+
+            for animation in scene.animations:
+                animation.finish()
+                animation.clean_up_from_scene(scene)
+            if not scene.renderer.skip_animations:
+                scene.update_mobjects(0)
+            # TODO: The OpenGLRenderer does not have the property static.image.
+            scene.renderer.static_image = None  # type: ignore[union-attr]
+            # Closing the progress bar at the end of the play.
+            scene.time_progression.close()
+        
+        animations = resolve_animations(animations=anims)
+        type(self.scene)._inside_play_call = True
+        self.renderer.animation_start_time = time.time()
+        begin_animations(scene=self.scene, renderer=self.renderer, animations=animations)
+        if self.scene.is_current_animation_frozen_frame():  # Frozen frame
+            render_frozen_frame(self.renderer, self.scene)
+            finalize_animations(self.renderer, self.scene)
+            type(self.scene)._inside_play_call = False
+            return None
+
+        run_animation_loop(self.scene, skip_rendering=False)
+        finalize_animations(self.renderer, self.scene)
+        type(self.scene)._inside_play_call = False
+        return None
+            
+            
+            
 
             
 
