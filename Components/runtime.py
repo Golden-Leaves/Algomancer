@@ -73,7 +73,7 @@ class AlgoScene(Scene):
         self._trace = []
         self._structures: weakref.WeakValueDictionary[int, VisualStructure] = weakref.WeakValueDictionary()
         self._active_structure = None
-        self.player = PlaybackController(scene=self)
+        self.player = PlaybackController(scene=self,controlled=True)
 
     @contextlib.contextmanager
     def animation_context(self):
@@ -184,28 +184,42 @@ def get_current_line_metadata() :
     return CURRENT_LINE.get()
 
 class PlaybackController:
-    def __init__(self,scene:AlgoScene,**kwargs):
+    def __init__(self,scene:AlgoScene,controlled=False,**kwargs):
         self.paused = False
         self.scene = scene
         self.logger = DebugLogger(logger_name=f"{__name__}.PlaybackController")
-        
+        self.controlled = controlled
     def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
-        type(self.scene)._inside_play_call = True 
-        try:
+        import threading
+        def resolve_animations(animations:list[Animation|LazyAnimation]) -> list[Animation]:
+            """Return concrete Animation instances from mixed play() inputs."""
             resolved = []
-            for anim in flatten_array(result=[],objs=anims):
+            for anim in flatten_array(result=[],objs=animations):
                 if not anim:
                     continue
                 anim = anim.build() if isinstance(anim, LazyAnimation) else anim
                 if not isinstance(anim, Animation):
                     raise TypeError(f"Unexpected {type(anim)} passed to play()")
-                self.scene._play_direct(anim)
-                # resolved.append(anim)
+                resolved.append(anim)
             if resolved:
                 self.logger.debug("List of animations(inside check): %s", resolved)
-                # self.scene._play_direct(*resolved, **kwargs)
-        finally:
-            type(self.scene)._inside_play_call = False
+            return resolved
+        animations = resolve_animations(animations=anims)
+        type(self.scene)._inside_play_call = True 
+        if self.controlled:
+            try:
+                for anim in animations:
+                    self.scene._play_direct(anim)
+            finally:
+                type(self.scene)._inside_play_call = False
+        
+           
+
+            
+
+            
+            
+            
     def pause(): pass
     def resume(): pass
     def step_frames(n:int=1): pass
