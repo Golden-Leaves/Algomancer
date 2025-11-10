@@ -39,7 +39,7 @@ def render_scene(
     image : bool | None, optional
         Render only the last frame (``-s``). Defaults to ``False`` when not provided.
     renderer : {"opengl", "cairo"} | None, optional
-        Manim renderer backend. Defaults to ``CFG.render.renderer``.
+        Manim renderer backend. Defaults to ``CFG.render.renderer_str``.
     write_to_file : bool | None, optional
         Force movie file output. For OpenGL this adds ``--write_to_movie``. Defaults to ``False``.
     fps : int | None, optional
@@ -58,7 +58,7 @@ def render_scene(
 
     preview = True if preview is None else preview
     image = False if image is None else image
-    renderer = (renderer or cfg.render.renderer).lower()
+    renderer = (renderer or cfg.render.renderer_str).lower()
     write_to_file = False if write_to_file is None else write_to_file
     fps = fps or cfg.playback.frame_rate
 

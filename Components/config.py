@@ -3,8 +3,7 @@ from __future__ import annotations
 """
 Static configuration defaults for Algomancer.
 
-This module keeps all runtime knobs in one place without reading JSON,
-touching Manim globals, or performing I/O. Other parts of the codebase
+Other parts of the codebase
 can import the dataclasses below and either use them as-is or clone them
 with overrides before wiring dependencies.
 """
@@ -16,12 +15,14 @@ from typing import Any, Dict
 @dataclass(frozen=True)
 class RenderSettings:
     """Renderer/window parameters."""
-
+    from manim.renderer.opengl_renderer import OpenGLRenderer
+    from manim.renderer.cairo_renderer import CairoRenderer
     pixel_width: int = 1920
     pixel_height: int = 1080
     window_scale: float = 0.75  # 0–1, multiplies pixel dims to get window size
     quality: str = "medium"  # low | medium | high | 4k
-    renderer: str = "opengl"  # or "cairo"
+    renderer_str: str = "opengl"  # or "cairo"
+    renderer: OpenGLRenderer | CairoRenderer = OpenGLRenderer # or CairoRenderer
     samples: int = 1  # MSAA samples
 
 
