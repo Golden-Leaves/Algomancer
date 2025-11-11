@@ -9,6 +9,8 @@ import weakref
 import numpy as np
 from typing import TYPE_CHECKING
 from screeninfo import get_monitors
+from enum import Enum
+
 from Components.logging import DebugLogger
 from Components.animations import LazyAnimation
 from Components.helpers import flatten_array
@@ -76,10 +78,12 @@ class AlgoScene(Scene):
         self._structures: weakref.WeakValueDictionary[int, VisualStructure] = weakref.WeakValueDictionary()
         self._active_structure = None
         self.player = PlaybackController(scene=self)
+        self._keys_down:set = set([])
+        self._last_toggle:float = 0.0 #There shuold be a 200ms cooldown between each key combination
 
     @contextlib.contextmanager
     def animation_context(self):
-        #Do this so the user doesn't need to import the other one but simply call self.animation_context()
+        #Do this so the user doesn't need to import the other one but simply do "with self.animation_context():"
         with animation_context():
             yield
 
@@ -106,7 +110,7 @@ class AlgoScene(Scene):
             if (x_min <= point[0] <= x_max) and (y_min <= point[1] <= y_max):
                 return structure
     
-    def _start_drag(self,structure:VisualStructure,point):
+    def _start_drag(self,structure:VisualStructure,point) -> None:
         """Lock in the grab point so drag updates scale around this reference."""
         origin = structure.get_center()
         vec = point - origin
@@ -126,7 +130,7 @@ class AlgoScene(Scene):
         }
     
     
-    def _update_drag(self,point):
+    def _update_drag(self,point) -> bool:
         """Adjust the active structure's scale based on the current cursor position."""
         structure_under_point = self.get_structure_under_cursor(point=point)
         state = self._active_structure
@@ -163,18 +167,43 @@ class AlgoScene(Scene):
             self._active_structure = None
         
 
-    def on_mouse_drag(self, point, d_point, buttons, modifiers):
+    def on_mouse_drag(self, point, d_point, buttons, modifiers) -> None:
         from pyglet.window import mouse
         draggable = False
-        if buttons & mouse.LEFT:
+        if buttons & mouse.LEFT: #Resizing
             draggable = self._update_drag(point=point)
         else:
             self._end_drag()
+            
         if not draggable:
             self._end_drag()
             return super().on_mouse_drag(point=point,d_point=d_point,buttons=buttons,modifiers=modifiers)
         return None
     
+    def on_key_press(self, symbol, modifiers) -> None: #Symbol is the key pressed, while modifiers are keys held(CTRL,...)
+        from pyglet.window import key
+        import time
+        
+        if symbol in self._keys_down: #Guards against repetitive spam , e.g when some one holds ctrl + p
+            return
+        
+        if symbol == key.SPACE: #Pausing and Playing
+            self._keys_down.add(key.SPACE)
+            now = time.time()
+            if now - self._last_toggle > 0.2: #200ms between each press minimum
+                if self.player.state == PlaybackState.PLAYING:
+                    self.player.pause()
+                elif self.player.state == PlaybackState.PAUSED:
+                    self.player.resume()
+                self._last_toggle = now
+        
+                
+        return super().on_key_press(symbol, modifiers)
+    
+    def on_key_release(self, symbol, modifiers):
+        if symbol in self._keys_down:
+            self._keys_down.remove(symbol)
+        return super().on_key_release(symbol, modifiers)
     
     
         
@@ -182,12 +211,30 @@ class AlgoScene(Scene):
 def get_current_line_metadata() :
     return CURRENT_LINE.get()
 
+class PlaybackState(str, Enum):
+    """Lifecycle states for PlaybackController."""
+
+    IDLE = "idle"
+    PLAYING = "playing" #in_play property of AlgoScene is still needed to guard against internals
+    PAUSED = "paused"
+    FINISHED = "finished"
+
 class PlaybackController:
+    """Cooperative playback engine that owns AlgoScene.play lifecycle.
+
+    Parameters
+    ----------
+    scene : AlgoScene
+        Scene instance whose renderer, file writer, and animations are managed.
+    """
+
     def __init__(self,scene:AlgoScene,**kwargs):
         self.paused = False
         self.scene = scene
         self.logger = DebugLogger(logger_name=f"{__name__}.PlaybackController")
         self.renderer: OpenGLRenderer | CairoRenderer = scene.renderer
+        self.state: PlaybackState = PlaybackState.IDLE
+        
     def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         import threading
         import time
@@ -236,7 +283,7 @@ class PlaybackController:
                     while time.time() - renderer.animation_start_time < scene.duration:
                         pass
                 renderer.animation_elapsed_time = scene.duration
-        def run_animation_loop(scene: AlgoScene, skip_rendering: bool = False) -> None:
+        def run_animation_loop(scene: AlgoScene,renderer:OpenGLRenderer|CairoRenderer, skip_rendering: bool = False) -> None:
             """Advance animations for the given scene frame-by-frame and render each frame.
 
             Mirrors Scene.play_internal() logic
@@ -248,9 +295,13 @@ class PlaybackController:
                 scene.duration,
             )
             for t in scene.time_progression:  # Loading Animation
+                while self.state == PlaybackState.PAUSED:
+                    renderer.render(scene, t, scene.moving_mobjects) #so inputs and changes(scaling) can still be rendered
+                    time.sleep(0.01)
+                    
                 scene.update_to_time(t)
                 if not skip_rendering and not scene.skip_animation_preview:
-                    scene.renderer.render(scene, t, scene.moving_mobjects)
+                    renderer.render(scene, t, scene.moving_mobjects)
                 if scene.stop_condition is not None and scene.stop_condition():
                     scene.time_progression.close()
                     break
@@ -267,17 +318,21 @@ class PlaybackController:
         
         animations = resolve_animations(animations=anims)
         type(self.scene)._inside_play_call = True
+        self.state = PlaybackState.PLAYING
         self.renderer.animation_start_time = time.time()
         begin_animations(scene=self.scene, renderer=self.renderer, animations=animations)
+        
         if self.scene.is_current_animation_frozen_frame():  # Frozen frame
             render_frozen_frame(self.renderer, self.scene)
             finalize_animations(self.renderer, self.scene)
             type(self.scene)._inside_play_call = False
+            self.state = PlaybackState.IDLE
             return None
 
-        run_animation_loop(self.scene, skip_rendering=False)
+        run_animation_loop(self.scene,renderer=self.renderer, skip_rendering=False)
         finalize_animations(self.renderer, self.scene)
         type(self.scene)._inside_play_call = False
+        self.state = PlaybackState.IDLE
         return None
             
             
@@ -288,6 +343,6 @@ class PlaybackController:
             
             
             
-    def pause(): pass
-    def resume(): pass
-    def step_frames(n:int=1): pass
+    def pause(self): self.state = PlaybackState.PAUSED
+    def resume(self): self.state = PlaybackState.PLAYING
+    def step_frames(self,n:int=1): pass
