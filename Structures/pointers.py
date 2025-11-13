@@ -69,7 +69,6 @@ class Pointer(VisualElement):
                 raise ValueError(f"Unsupported comparison operator: {op}")
 
             # Log and visualize
-            self.master.log_event(_type="compare", other=other, result=result)
             return result
             
         elif isinstance(other, (int, float, str, bool)):
@@ -227,7 +226,12 @@ class Pointer(VisualElement):
         self.body.scale(self.size,about_point=arrow_end)
         # Label positioned near start
         text_scale = self.body.stroke_width * 0.8
-        self.label = Text(self.label).scale(text_scale)
+        
+        if isinstance(self.label,MathTex):
+            self.label:MathTex = self.label.scale(text_scale)
+        else:
+            self.label:Text = Text(self.label).scale(text_scale)
+            
         self.label.next_to(self.body, self.direction, buff=0.15).align_to(self.body, ORIGIN)
         self.label.add_updater(
     lambda m: m.next_to(self.body, self.direction, buff=0.15).align_to(self.body, ORIGIN)

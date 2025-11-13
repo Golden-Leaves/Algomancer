@@ -1,7 +1,6 @@
 from __future__ import annotations
 from manim import *
 import numpy as np
-from Components.events import Event
 from Components.ops import get_operation, resolve_value
 from Components.runtime import AlgoScene, get_current_line_metadata, is_animating
 from Components.effects import EffectsManager
@@ -9,7 +8,8 @@ from typing import Any, TYPE_CHECKING
 import contextvars
 import weakref
 _COMPARE_GUARD = contextvars.ContextVar("_COMPARE_GUARD", default=False)
-
+if TYPE_CHECKING:
+    from Components.logging import DebugLogger
 
 class VisualStructure(VGroup):
     """Base container for Algomancer data structures.
@@ -31,20 +31,20 @@ class VisualStructure(VGroup):
     """
     def __init__(self, scene:AlgoScene,label:str, **kwargs):
         super().__init__(**kwargs)
-        self.pos = kwargs.pop("pos",None)
-        if self.pos is not None:
-            self.pos = np.array(self.pos)
-        
+        start_pos = kwargs.pop("start_pos", None)
+        if start_pos is not None:
+            self._pos = np.array(start_pos, dtype=float)
         else:
-            x = kwargs.get("x",None)
-            y = kwargs.get("y",None)
-            z = kwargs.get("z",None)
-            if x is None and y is None and z is None: #Fills in missing axis values if not provided
-                self.pos = ORIGIN
-                x = x if x is not None else ORIGIN[0]
-                y = y if y is not None else ORIGIN[1]
-                z = z if z is not None else ORIGIN[2]
-                self.pos = np.array([x,y,z])
+            x = kwargs.get("x", None)
+            y = kwargs.get("y", None)
+            z = kwargs.get("z", None)
+            if x is None and y is None and z is None:
+                self._pos = np.array(ORIGIN, dtype=float)
+            else:
+                x = ORIGIN[0] if x is None else x
+                y = ORIGIN[1] if y is None else y
+                z = ORIGIN[2] if z is None else z
+                self._pos = np.array([x, y, z], dtype=float)
         self._scene_ref = weakref.ref(scene) if scene else None
         self.label = label if label else ""
         self.elements: list[VisualElement] = []
@@ -53,6 +53,15 @@ class VisualStructure(VGroup):
         self.effects = EffectsManager(logger=logger)
         if scene is not None:
             scene.register_structure(self)
+    
+    @property
+    def pos(self) -> np.ndarray:
+        return self._pos
+
+    @pos.setter
+    def pos(self, new_pos: np.ndarray | list | tuple) -> None:
+        self._pos = np.array(new_pos, dtype=float)
+
     
     def add(self, *mobjects):
         """Ensure Manim duplicate checks use identity, not value-based equality."""
@@ -69,6 +78,11 @@ class VisualStructure(VGroup):
             return super().remove(*mobjects)
         finally:
             _COMPARE_GUARD.reset(token)
+
+    def move_to(self, *args, **kwargs):
+        super().move_to(*args, **kwargs)
+        self._pos = np.array(self.get_center(), dtype=float)
+        return self
     
     def __len__(self):
         return len(self.elements)
@@ -104,6 +118,8 @@ class VisualStructure(VGroup):
         """
         scene = self.scene
         if not scene:
+            logger:DebugLogger = getattr(self,"logger")
+            logger.warning("No Scene bound. Pass scene=... when creating %s.",self)
             raise RuntimeError("No Scene bound. Pass scene=... when creating VisualStructure.")
         scene.player.play(*anims, source=None, **kwargs)
         for element in self.elements: 
@@ -171,51 +187,6 @@ class VisualStructure(VGroup):
         else:
             raise TypeError(f"Expected int or VisualElement, got {type(element).__name__}")
         
-    def log_event(
-        self,
-        _type: str,
-        indices: list[int] | None = None,
-        other: Any | None = None,
-        value: Any | None = None,
-        result: bool | None = None,
-        comment: str | None = None,
-    ):
-        """Append a new :class:`Event` describing the current visual operation.
-
-        Parameters
-        ----------
-        _type : str
-            Category of the action (e.g. ``\"compare\"``, ``\"swap\"``).
-        indices : list[int] | None, optional
-            Index or indices touched by the operation.
-        other : Any | None, optional
-            Secondary operand (another element/pointer) involved in the action.
-        value : Any | None, optional
-            Payload value (assignment target, lookup result, etc.).
-        result : bool | None, optional
-            Outcome flag for comparisons or predicates.
-        comment : str | None, optional
-            Free-form annotation describing the step.
-        """
-
-        event = Event(
-            _type=_type,
-            target={
-                "id": id(self),
-                "name": type(self).__name__,
-                "label": getattr(self, "label", None),
-            },
-            indices=indices,
-            other=other,
-            value=value,
-            result=result,
-            comment=comment,
-            line_info=get_current_line_metadata(),
-        )
-        self._trace.append(event)
-        scene = self.scene
-        if scene is not None:
-            scene._trace.append(event)
 
 
     @property
@@ -291,6 +262,8 @@ class VisualElement(VGroup):
             self._master_ref = None
         else:
             self._master_ref = weakref.ref(new_master)
+ 
+        
 
     def __getstate__(self): #Strips the master ref while deepcopying(opengl)
         state = dict(self.__dict__)
@@ -301,7 +274,21 @@ class VisualElement(VGroup):
         self.__dict__.update(state)
     
     def __hash__(self):
-        return id(self)
+        """Hash visual elements by their logical value when possible.
+
+        This aligns hashing with the value-based equality so that
+        VisualElement instances behave like their corresponding primitives in
+        dict/set membership (e.g., `cell in {'(': ')'}` works when
+        `cell.value == '('`). Falls back to identity for unhashable values.
+        """
+        v = getattr(self, "value", None)
+        # Fast path for common primitives
+        if isinstance(v, (str, int, float, bool)):
+            return hash(v)
+        try:
+            return hash(v)
+        except Exception:
+            return id(self)
         
     @staticmethod
     def get_mobject_state(mobj: Mobject | None, depth: int = 1) -> dict[str, Any]:
@@ -381,8 +368,6 @@ class VisualElement(VGroup):
             )
 
         try:
-            if self.master:
-                self.master.log_event(_type="compare", other=other, result=result)
             if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
                 if hasattr(self.master, "effects") and hasattr(self.master.effects, "compare"):
                     master_anim = self.master.effects.compare(self, other, result=result)
@@ -482,8 +467,6 @@ class VisualElement(VGroup):
                 body_opacity,
                 getattr(body, "z_index", None),
             )
-        if self.master:
-            self.master.log_event(_type=f"arithmetic-{op}", result=result)
 
         if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
             master_anim = [ #TODO:Weird text dimming bug occurs if we use Succession or AnimationGroup, that's why a list is used

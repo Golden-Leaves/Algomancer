@@ -58,7 +58,7 @@ class Cell(VisualElement):
         text = self.text.copy()
         
 
-    # Ensure copies keep a valid text→body tracking updater
+    #Ensure copies keep a valid text -> body tracking updater
     def copy(self):
         clone = super().copy()
         if hasattr(clone, "text") and hasattr(clone, "body"):
@@ -109,7 +109,7 @@ class VisualArray(VisualStructure):
               Defaults to ORIGIN on each axis.
         """
         self.logger = DebugLogger(logger_name=__name__, output=False)
-        self._raw_data = data #The original structure the user passed in, maybe don't touch this beyond create()
+        self._raw_data = list(data) #The original structure the user passed in, maybe don't touch this beyond create()
         self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)
         self.rounded = kwargs.pop("rounded",False)
@@ -136,16 +136,13 @@ class VisualArray(VisualStructure):
             
     def __getitem__(self, index):
         self.logger.debug("__getitem__ at index=%s",index)
-        self.log_event(_type="get",indices=[index],comment=f"Accessing index {index}")
         if isinstance(index, Pointer):
             return self.elements[index.value]
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
-            # self.play(Succession(self.highlight(index,runtime=0.2),Wait(0.1),self.unhighlight(index,runtime=0.2)))
             self.play([self.highlight(index,runtime=0.2),self.unhighlight(index,runtime=0.2)])
         return self.get_element(index)
     
     def __setitem__(self, index, value):
-        self.log_event(_type="set",indices=[index],value=value,comment=f"Setting index {index} to value {value}")
         if self.scene and is_animating() and not self.scene.in_play:
             self.play(self.set_value(index=index,value=value))
         return 
@@ -171,7 +168,6 @@ class VisualArray(VisualStructure):
                                         self.unhighlight(element=cell,runtime=0.2)
                                         ))
                 break
-        self.log_event(_type="contains",value=value,result=result,comment=f"Find value {value} in array")
         return result
     
     def __iter__(self):
@@ -212,10 +208,6 @@ class VisualArray(VisualStructure):
                 
             self.submobjects = list(self.elements)
             print("Sorted elements: ",self.elements)
-            self.log_event(
-                _type="sort",
-                comment=f"VisualArray sorted (reverse={reverse}, key={key is not None})"
-            )
             self.play(Wait(0.1))
             return self
         else:
@@ -309,9 +301,14 @@ class VisualArray(VisualStructure):
     
    
     
-    def append(self,data,runtime=0.5,recenter=True) -> None:
+    def append(self,data:Any|VisualElement,runtime=0.5,recenter=True) -> None:
+        data_value = data.value if isinstance(data,VisualElement) else data
+        self.logger.debug("data_type=%s data_value=%s",type(data),data_value)
+        
         if not self._instantialized:
-            self.create()
+            self.play(self.create())
+        if isinstance(data,VisualElement):
+            data:VisualElement = data.value
         cell = Cell(
             value=data,
             master=self,
@@ -322,25 +319,28 @@ class VisualArray(VisualStructure):
 
         last_cell:Cell = self.elements[-1] if self.elements else cell
         if self.elements:#If an array already exists
-            right_side = last_cell.right
-            right_vec = right_side / np.linalg.norm(right_side)
-            cell.move_to(last_cell.right + right_vec * (last_cell.body_width / 2)) #Spawns next to last_cell   
+            # right_side = last_cell.right
+            # right_vec = right_side / np.linalg.norm(right_side)
+            # cell.move_to(right_side + right_vec * (last_cell.body_width / 2)) #Spawns next to last_cell   
+            cell_position = get_offset_position(element=last_cell,direction=RIGHT,buff=0.5)
+            cell.move_to(cell_position)
         
         self.add(cell)
         self.elements.append(cell)
-        self.create(cells=[cell])
+        self.play(self.create(cells=[cell]))
         
        
         if recenter: 
             self.move_to(self.pos)
+            
         self.logger.debug("array.append value=%s -> len=%d", data, len(self.elements))
         
-    def extend(self,iterable) -> None:
+    def extend(self,iterable,recenter=True) -> None:
         """Extend list by appending elements from the iterable"""
         if not hasattr(iterable,"__iter__"):
             raise TypeError("extend() argument must be iterable")
         for item in iterable:
-            self.append(item)
+            self.append(item,recenter=recenter)
             self.wait(0.05)
             
     def __delitem__(self, index: int | Cell) -> None:
@@ -352,10 +352,10 @@ class VisualArray(VisualStructure):
         self.elements.pop(idx)
         self.logger.debug("array.del index=%s -> len=%d", idx, len(self.elements))
 
-    def pop(self,index:int|Cell,runtime=0.5) -> Any:
+    def pop(self,index:int|Cell=-1,runtime=0.5) -> Any:
         mid = len(self.elements) // 2
         popped_cell:Cell = self.get_element(index)
-
+      
         anims = []
         anims.append(FadeOut(popped_cell))
         if index <= mid:
