@@ -183,19 +183,36 @@ class AlgoScene(Scene):
     def on_key_press(self, symbol, modifiers) -> None: #Symbol is the key pressed, while modifiers are keys held(CTRL,...)
         from pyglet.window import key
         import time
+        def cooldown_ended(cooldown:float=0.2) -> bool:
+            now = time.time()
+            return True if now - self._last_toggle > cooldown else False  #Default 200ms between each press minimum
         
         if symbol in self._keys_down: #Guards against repetitive spam , e.g when some one holds ctrl + p
             return
         
         if symbol == key.SPACE: #Pausing and Playing
             self._keys_down.add(key.SPACE)
-            now = time.time()
-            if now - self._last_toggle > 0.2: #200ms between each press minimum
+            if cooldown_ended():
                 if self.player.state == PlaybackState.PLAYING:
                     self.player.pause()
                 elif self.player.state == PlaybackState.PAUSED:
                     self.player.resume()
-                self._last_toggle = now
+                self._last_toggle = time.time()
+                
+        if symbol == key.PERIOD: #Advance 1 frame
+            self._keys_down.add(key.PERIOD)
+            if cooldown_ended(cooldown=0.1):
+                if self.player.state == PlaybackState.PAUSED:
+                    self.player.step_frames(frames=1)
+                self._last_toggle = time.time()
+        
+        if symbol == key.RIGHT:
+            self._keys_down.add(key.RIGHT)
+            if cooldown_ended(cooldown=0):
+                if self.player.state == PlaybackState.PAUSED:
+                    self.player.seek_seconds(seconds=1)
+                self._last_toggle = time.time()
+            
         
                 
         return super().on_key_press(symbol, modifiers)
@@ -235,6 +252,9 @@ class PlaybackController:
         self.renderer: OpenGLRenderer | CairoRenderer = scene.renderer
         self.state: PlaybackState = PlaybackState.IDLE
         
+        self._step_time_delta:float = 0.0 #Time difference for n frames stepped
+        self._last_t:float = 0.0
+        
     def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         import threading
         import time
@@ -267,6 +287,7 @@ class PlaybackController:
             renderer.file_writer.end_animation(not renderer.skip_animations)
             renderer.time += scene.duration
             renderer.num_plays += 1
+            
         def render_frozen_frame(renderer: OpenGLRenderer | CairoRenderer, scene: AlgoScene) -> None:
                 """Render a single frozen frame, duplicating it to match scene.duration.
 
@@ -294,17 +315,24 @@ class PlaybackController:
                 scene.animations,
                 scene.duration,
             )
-            for t in scene.time_progression:  # Loading Animation
-                while self.state == PlaybackState.PAUSED:
-                    renderer.render(scene, t, scene.moving_mobjects) #so inputs and changes(scaling) can still be rendered
+            self.logger.info("Time progression sum: %s",sum([t for t in scene.time_progression]))
+            
+            for t in scene.time_progression:  
+                self.logger.debug("Current time progression: %s; time progression type: %s",t,type(t))
+                while self.state == PlaybackState.PAUSED and self._step_time_delta == 0:
+                    renderer.render(scene, self._last_t, scene.moving_mobjects) #so inputs and changes(scaling) can still be rendered
                     time.sleep(0.01)
                     
-                scene.update_to_time(t)
+                if self.state == PlaybackState.PAUSED and self._step_time_delta > 0: #Step to the correct frame first before pausing
+                    self._step_time_delta -= (1/config.frame_rate)
+                    
+                scene.update_to_time(t) #Animations will be rendered as if they're at the time t
                 if not skip_rendering and not scene.skip_animation_preview:
                     renderer.render(scene, t, scene.moving_mobjects)
                 if scene.stop_condition is not None and scene.stop_condition():
                     scene.time_progression.close()
                     break
+                self._last_t = t
 
             for animation in scene.animations:
                 animation.finish()
@@ -345,4 +373,10 @@ class PlaybackController:
             
     def pause(self): self.state = PlaybackState.PAUSED
     def resume(self): self.state = PlaybackState.PLAYING
-    def step_frames(self,n:int=1): pass
+    def step_frames(self,frames:float=1):
+        if self.state == PlaybackState.PAUSED:
+            self._step_time_delta += (frames / config.frame_rate)
+            
+    def seek_seconds(self,seconds:float=1.0):
+        if self.state == PlaybackState.PAUSED:
+            self.step_frames(seconds * config.frame_rate)
