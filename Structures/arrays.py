@@ -318,12 +318,15 @@ class VisualArray(VisualStructure):
         )
 
         last_cell:Cell = self.elements[-1] if self.elements else cell
-        if self.elements:#If an array already exists
-            # right_side = last_cell.right
-            # right_vec = right_side / np.linalg.norm(right_side)
-            # cell.move_to(right_side + right_vec * (last_cell.body_width / 2)) #Spawns next to last_cell   
+        
+        if self.elements:
             cell_position = get_offset_position(element=last_cell,direction=RIGHT,buff=0.5)
-            cell.move_to(cell_position)
+        else:
+            cell_position = self.pos
+            
+        cell.move_to(cell_position)
+        if isinstance(last_cell,Rectangle):
+            self.elements.remove(last_cell)
         
         self.add(cell)
         self.elements.append(cell)
@@ -431,18 +434,18 @@ class VisualArray(VisualStructure):
 
     def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
-        if not self._instantialized:
+        def instantiate(raw_data,position):
             self.logger.debug(
                 "array.create start len=%d pos=%s",
-                len(self._raw_data),
+                len(raw_data),
                 np.array2string(self.get_center(), precision=2),
             )
-        if not self._instantialized:  # instantiate cell geometry without animation
+            
             anchor = np.array(self.get_center())
             if not np.allclose(anchor, 0):
-                self.pos = anchor
-                
-            for text in self._raw_data:
+                position = anchor
+        
+            for text in raw_data:
                 cell = Cell(
                     value=text,
                     master=self,
@@ -458,20 +461,21 @@ class VisualArray(VisualStructure):
             for cell in self.elements:
                 cell.set_opacity(0)
             self._instantialized = True
-            
-            if self.elements: #offset logic
+          
+            if self.elements: #position offset logic
                 element_width = float(self.element_width)
                 center_shift = (len(self.elements) - 1) / 2
                 for idx, cell in enumerate(self.elements):
                     #Indexes lower than center_shift will go left, higher will go right
                     offset = (idx - center_shift) * element_width 
-                    cell.move_to(self.pos + RIGHT * offset)
-            self.move_to(self.pos)
+                    cell.move_to(position + RIGHT * offset)
+                
+            self.move_to(position)
             self.set_opacity(0)  
-            
             if not self.scene:
                 return None
-
+        if not self._instantialized:
+            instantiate(raw_data=self._raw_data,position=self.pos)
 
         if not self.scene:
             return None
