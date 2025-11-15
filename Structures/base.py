@@ -289,46 +289,6 @@ class VisualElement(VGroup):
             return hash(v)
         except Exception:
             return id(self)
-        
-    @staticmethod
-    def get_mobject_state(mobj: Mobject | None, depth: int = 1) -> dict[str, Any]:
-        """Return a snapshot of a Manim mobject's visual attributes."""
-        if mobj is None:
-            return {}
-        submobjects: list[Any] = []
-        if depth > 0: #recursively traverses submobjects to get their state
-            for child in getattr(mobj, "submobjects", []):
-                submobjects.append(VisualElement.get_mobject_state(child, depth=depth - 1))
-        else:
-            submobjects = [type(child).__name__ for child in getattr(mobj, "submobjects", [])]
-            
-        state: dict[str, Any] = {
-            "type": type(mobj).__name__,
-            "z_index": getattr(mobj, "z_index", None),
-            "submobjects": submobjects,
-        }
-        if hasattr(mobj, "get_center"): state["center"] = np.array2string(mobj.get_center(), precision=3)
-        if hasattr(mobj, "get_x"):
-            state["x"], state["y"], state["z"] = (
-                round(float(mobj.get_x()), 3),
-                round(float(mobj.get_y()), 3),
-                round(float(mobj.get_z()), 3),
-            )
-        if hasattr(mobj, "get_width"):
-            state["width"], state["height"] = (
-                round(float(mobj.get_width()), 3),
-                round(float(mobj.get_height()), 3),
-            )
-        if hasattr(mobj, "get_fill_color"): state["fill_color"] = mobj.get_fill_color().to_hex()
-        if hasattr(mobj, "get_fill_opacity"): state["fill_opacity"] = float(mobj.get_fill_opacity())
-        if hasattr(mobj, "get_stroke_color"): state["stroke_color"] = mobj.get_stroke_color().to_hex()
-        if hasattr(mobj, "get_stroke_width"): state["stroke_width"] = float(mobj.get_stroke_width())
-        if hasattr(mobj, "get_stroke_opacity"):
-            state["stroke_opacity"] = float(mobj.get_stroke_opacity())
-        if hasattr(mobj, "get_opacity"): state["opacity"] = float(mobj.get_opacity())
-        return state
-
-  
 
     def _compare(self, other, op: str):
         """Internal unified comparison handler."""
@@ -543,6 +503,32 @@ class VisualElement(VGroup):
         result = self._arith(other=other, op="%")
         self.value = result
         return self
+
+    # --- Casting helpers ---
+    def __int__(self) -> int:
+        """Return int(self.value) when the underlying value is numeric."""
+        if isinstance(self.value, (int, bool)):
+            return int(self.value)
+        raise TypeError(f"int() not supported for {type(self.value).__name__}")
+
+    def __float__(self) -> float:
+        """Return float(self.value) when the underlying value is numeric."""
+        if isinstance(self.value, (int, float)):
+            return float(self.value)
+        raise TypeError(f"float() not supported for {type(self.value).__name__}")
+
+    def __str__(self) -> str:
+        """Return str(self.value)."""
+        return str(self.value)
+
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__} value={self.value!r} master={self.master}>"
+
+    def __index__(self) -> int:
+        """Allow using VisualElements in slice/index contexts when value is int-like."""
+        if isinstance(self.value, (int, bool)):
+            return int(self.value)
+        raise TypeError(f"__index__ not supported for {type(self.value).__name__}")
     # --- Dimensions ---
     @property
     def body_width(self):
