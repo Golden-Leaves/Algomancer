@@ -14,6 +14,7 @@ class LazyAnimation:
     Allows call sites to defer expensive animation creation until `play()` runs. Avoids
     pre-computing animations (e.g. `set_value`) before the scene exists.
     """
+    
 
     def __init__(self, builder):
         self.builder = builder
@@ -21,6 +22,11 @@ class LazyAnimation:
     def build(self) -> Animation:
         anim = self.builder()
         return anim
+    def begin(self):
+        from manim import config
+        self.dt = 1 / config.frame_rate
+        self.time = 0.0
+        self.state = "playing"
 
 
 def hop_element(
