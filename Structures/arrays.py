@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any,Generic,TypeVar
 import math
 import numpy as np
 from manim import *
@@ -9,7 +9,7 @@ from Components.runtime import AlgoScene, is_animating
 from Structures.base import VisualStructure,VisualElement
 from Structures.pointers import Pointer
 BRIGHT_GREEN = "#00FF00"
-
+T = TypeVar("T")
     
 class Cell(VisualElement):
     """Visual representation of a single array slot with body + text managed together."""
@@ -79,7 +79,7 @@ class Cell(VisualElement):
             clone.text.add_updater(lambda m, body=clone.body: m.move_to(body.get_center()))
         return clone
     
-class VisualArray(VisualStructure):
+class VisualArray(VisualStructure,Generic[T]):
     def __init__(self,data:Any,scene:AlgoScene|None=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
                 label:str=None,
                 **kwargs):
@@ -474,6 +474,7 @@ class VisualArray(VisualStructure):
             self.set_opacity(0)  
             if not self.scene:
                 return None
+            
         if not self._instantialized:
             instantiate(raw_data=self._raw_data,position=self.pos)
 
