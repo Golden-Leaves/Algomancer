@@ -10,11 +10,13 @@ import numpy as np
 from typing import TYPE_CHECKING
 from screeninfo import get_monitors
 from enum import Enum
+import os
 
 from Components.logging import DebugLogger
 from Components.animations import LazyAnimation
 from Components.helpers import flatten_array
 from Components.config import DEFAULT_CONFIG as CFG
+from manim.utils.hashing import get_hash_from_play_call
 if TYPE_CHECKING:
     from Structures.base import VisualStructure
 
@@ -72,6 +74,7 @@ class AlgoScene(Scene):
         random_seed=None,
         skip_animations=False,
     ):
+        os.makedirs("DEBUG",exist_ok=True)
         self.logger = DebugLogger(logger_name=__name__)
         super().__init__(renderer, camera_class, always_update_mobjects, random_seed, skip_animations)
         self._trace = []
@@ -206,12 +209,12 @@ class AlgoScene(Scene):
                     self.player.step_frames(frames=1)
                 self._last_toggle = time.time()
         
-        if symbol == key.RIGHT:
-            self._keys_down.add(key.RIGHT)
-            if cooldown_ended(cooldown=0):
-                if self.player.state == PlaybackState.PAUSED:
-                    self.player.seek_seconds(seconds=1)
-                self._last_toggle = time.time()
+        # if symbol == key.RIGHT:
+        #     self._keys_down.add(key.RIGHT)
+        #     if cooldown_ended(cooldown=0):
+        #         if self.player.state == PlaybackState.PAUSED:
+        #             self.player.seek_seconds(seconds=1)
+        #         self._last_toggle = time.time()
             
         
                 
@@ -279,6 +282,24 @@ class PlaybackController:
         def begin_animations(
             scene:AlgoScene,renderer:CairoRenderer|OpenGLRenderer,
             animations:list[Animation], **kwargs) -> None:
+            if not hasattr(renderer, "animations_hashes"):
+                renderer.animations_hashes = []  # type: ignore[attr-defined]
+
+            if not config["disable_caching"]:
+                hash_play = get_hash_from_play_call(
+                    renderer,
+                    renderer.camera,
+                    animations,
+                    scene.mobjects,
+                )
+                if renderer.file_writer.is_already_cached(hash_play):
+                    renderer.skip_animations = True
+            else:
+                hash_play = f"uncached_{renderer.num_plays:05}"
+
+            renderer.animations_hashes.append(hash_play)
+            renderer.file_writer.add_partial_movie_file(hash_play)
+
             renderer.file_writer.begin_animation(not renderer.skip_animations)
             scene.compile_animation_data(*animations,**kwargs)
             scene.begin_animations()
@@ -315,10 +336,8 @@ class PlaybackController:
                 scene.animations,
                 scene.duration,
             )
-            self.logger.info("Time progression sum: %s",sum([t for t in scene.time_progression]))
-            
             for t in scene.time_progression:  
-                self.logger.debug("Current time progression: %s; time progression type: %s",t,type(t))
+                # self.logger.debug("Current time progression: %s; time progression type: %s",t,type(t))
                 while self.state == PlaybackState.PAUSED and self._step_time_delta == 0:
                     renderer.render(scene, self._last_t, scene.moving_mobjects) #so inputs and changes(scaling) can still be rendered
                     time.sleep(0.01)
@@ -346,7 +365,8 @@ class PlaybackController:
         
         animations = resolve_animations(animations=anims)
         type(self.scene)._inside_play_call = True
-        self.state = PlaybackState.PLAYING
+        if self.state != PlaybackState.PAUSED: 
+            self.state = PlaybackState.PLAYING
         self.renderer.animation_start_time = time.time()
         begin_animations(scene=self.scene, renderer=self.renderer, animations=animations)
         
