@@ -2,6 +2,7 @@ from __future__ import annotations
 from manim import *
 from manim.renderer.opengl_renderer import OpenGLRenderer
 from manim.renderer.cairo_renderer import CairoRenderer
+from manim_slides import Slide
 import contextvars
 import contextlib
 import sys
@@ -224,13 +225,12 @@ class AlgoScene(Scene):
         if symbol in self._keys_down:
             self._keys_down.remove(symbol)
         return super().on_key_release(symbol, modifiers)
-    
-    
-        
-    
+
 def get_current_line_metadata() :
     return CURRENT_LINE.get()
 
+class AlgoSlide(Slide,AlgoScene):
+    pass
 class PlaybackState(str, Enum):
     """Lifecycle states for PlaybackController."""
 

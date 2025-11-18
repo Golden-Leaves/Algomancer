@@ -2,16 +2,14 @@ from manim import *
 from Structures.arrays import VisualArray
 from Structures.pointers import Pointer,PointerRange
 from Algorithms.searching import linear_search
-from Components.runtime import AlgoScene
+from Components.runtime import AlgoScene,AlgoSlide
 from Tests import test_arrays as ta
-from Components.logging import setup_logging
+from Components.logging import DebugLogger
 from Components.render_scene import render_scene
-import numpy as np
-
-class ArrayScene(AlgoScene):
+class ArrayScene(AlgoSlide):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.logger = setup_logging(logger_name="algoamancer.array_prod",output=True)
+        self.logger = DebugLogger(logger_name=__name__, output=True)
     def generate_board(self,array:np.ndarray):
         pass
     # def bubble_sort(self,array: VisualArray):
@@ -37,10 +35,8 @@ class ArrayScene(AlgoScene):
         for i in PointerRange(len(array),master=array,label="i"):
             for j in PointerRange(len(array) - 1 - i,master=array,label="j",color=PURPLE):
                 if array[j] > array[j+1]:
-                    temp = array[j]
-                    array[j] = array[j+1]
-                    array[j+1] = temp
-            array.play(array.outline(element=len(array) - i))
+                    self.play(array.swap(j,j+1))
+            self.play(array.outline(element=array[len(array) - 1 - i]))
                     
         return array
                     
@@ -83,36 +79,59 @@ class ArrayScene(AlgoScene):
             j.destroy()
 
         return triplets
-                    
+    def isValid(self, s: VisualArray) -> bool:
+        pairs = {
+        '(': ')',
+        '[': ']',
+        '{': '}'}
+        
+        stack = VisualArray([],scene=self,label="stack",pos=DOWN+LEFT)
+        self.play(stack.create())
+        for char in s:
+            if char in pairs:
+                stack.append(char,recenter=False)
+            else:
+                if not stack or pairs[stack.pop()] != char:
+                    return False
+        return len(stack) == 0  
+        
     def construct(self):
         with self.animation_context():
-            array = VisualArray([-2,0,1,1,2],scene=self)
-            ptr_a = Pointer(value=1,master=array,label="a")
-            ptr_b = Pointer(value=0,master=array,label="b")
-            array.play(array.create())
-            self.bubble_sort(array)
-            print(array)
+            # array = VisualArray([],scene=self)
+            # ptr_a = Pointer(value=1,master=array,label="a")
+            # ptr_b = Pointer(value=0,master=array,label="b")
+            # self.play(array.create())
+            # array.append("str")
+            s = VisualArray("(([]))",scene=self,label="string",start_pos=UP+LEFT)
+            self.play(s.create())
 
-            # element = array.get_element(1)
-            # array.log_state(label="After array creation",level="INFO",elements=[element])
-            # array.play(array.indicate(element=element))
-            # array.log_state(label="After first indicate",level="INFO",elements=[element])
+            # # s.append(data=1,recenter=False)
+            # self.logger.log_stucture_state(structure=s,label="before move_to")
+            # s.move_to(ORIGIN)
+           
+            # self.logger.log_stucture_state(structure=s,label="after move_to")
+            # self.wait(1)
+            # s.move_to(UP)
+            # # s.append(data=1)
             
-            # array.play(array.highlight(element=1))
-            # array.log_state(label="After first highlight",level="INFO",elements=[array.get_element(1)])
-            # array.play(array.unhighlight(element=1))
-            # array.log_state(label="After first unhighlight",level="INFO",elements=[array.get_element(1)])
-           
-            # result = self.threeSum(nums=array)
-            # self.logger.info("threeSum result: %s", result)
-            # ta.test_full_with_pointers(array=array,ptr_a=ptr_a,ptr_b=ptr_b)
-           
+            self.isValid(s=s)
+            
+
+        
+    
+            
+            # array[3] += 3
+            # array[2] > array[1]
+            # self.bubble_sort(array=array)
+            
+            
+
         self.wait(1)
         self.interactive_embed()
     
         
         
-     
+        
         
 if __name__ == "__main__":
-    render_scene(ArrayScene,file=__file__,quality="medium",renderer="opengl",fps=30)
+    render_scene(ArrayScene,file=__file__,quality="medium",renderer="opengl",fps=30,write_to_file=True)

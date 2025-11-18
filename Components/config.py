@@ -24,6 +24,7 @@ class RenderSettings:
     renderer_str: str = "opengl"  # or "cairo"
     renderer: OpenGLRenderer | CairoRenderer = OpenGLRenderer # or CairoRenderer
     samples: int = 1  # MSAA samples
+    slides: bool = True
 
 
 @dataclass(frozen=True)

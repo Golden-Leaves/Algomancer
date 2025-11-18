@@ -247,7 +247,7 @@ class VisualElement(VGroup):
         #Python's pickle() will explode as it tries to recursively traverse through attributes...
         self._master_ref = weakref.ref(master) if master else None 
         self.value = value
-        self.label = label
+        self.label = label if label else ""
         if body:
             self.add(body)
 
@@ -328,7 +328,8 @@ class VisualElement(VGroup):
             )
 
         try:
-            if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
+            is_other_primitive = isinstance(other,(int,float,str,bool))
+            if self.master and self.master.scene and is_animating() and not self.master.scene.in_play and not is_other_primitive:
                 if hasattr(self.master, "effects") and hasattr(self.master.effects, "compare"):
                     master_anim = self.master.effects.compare(self, other, result=result)
                     if master_anim:
@@ -504,31 +505,35 @@ class VisualElement(VGroup):
         self.value = result
         return self
 
-    # --- Casting helpers ---
     def __int__(self) -> int:
-        """Return int(self.value) when the underlying value is numeric."""
-        if isinstance(self.value, (int, bool)):
+        self.master.logger.info("Value: %s",self.value)
+        try: 
             return int(self.value)
-        raise TypeError(f"int() not supported for {type(self.value).__name__}")
+        except Exception as e:
+            raise f"Exception {e}"
 
     def __float__(self) -> float:
-        """Return float(self.value) when the underlying value is numeric."""
-        if isinstance(self.value, (int, float)):
+        try: 
             return float(self.value)
-        raise TypeError(f"float() not supported for {type(self.value).__name__}")
-
+        except Exception as e:
+            raise f"Exception {e}"
+        
     def __str__(self) -> str:
-        """Return str(self.value)."""
-        return str(self.value)
+        try:
+            return str(self.value)
+        except Exception as e:
+            raise f"Exception {e}"
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} value={self.value!r} master={self.master}>"
 
     def __index__(self) -> int:
         """Allow using VisualElements in slice/index contexts when value is int-like."""
-        if isinstance(self.value, (int, bool)):
+        try: 
             return int(self.value)
-        raise TypeError(f"__index__ not supported for {type(self.value).__name__}")
+        except Exception as e:
+            raise f"Exception {e}"
+    
     # --- Dimensions ---
     @property
     def body_width(self):

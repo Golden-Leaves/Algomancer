@@ -2,7 +2,7 @@ from manim import *
 from Structures.linked_lists import VisualLinkedList
 from Algorithms.sorting import bubble_sort,insertion_sort
 from Algorithms.searching import linear_search
-from helpers import render_scene
+from Components.render_scene import render_scene
 import numpy as np
 import random
 

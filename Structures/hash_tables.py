@@ -92,9 +92,10 @@ class VisualHashTable(VisualStructure):
         self.text_color = WHITE
         self.entries:dict[Any,Entry] = {} #Normal keys, self.elements stores by buckets(hashed key)
         self._instantialized = False
+        
     def __len__(self):
         return len(self.entries)
-    # @classmethod
+
     def _hash_key(self,key):
         if isinstance(key,int):
             raw = key

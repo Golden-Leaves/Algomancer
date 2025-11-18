@@ -41,7 +41,6 @@ class DebugLogger:
             env_path = os.path.join(current_directory,"..",".env")
             print(env_path)
             load_dotenv(env_path)
-            os.makedirs("DEBUG",exist_ok=True)
             logging_level = (os.getenv("LOGGING_LEVEL") or "INFO").upper()
             level = getattr(logging,logging_level,logging.INFO)
             handlers = [
@@ -120,7 +119,8 @@ class DebugLogger:
         for idx, element in enumerate(flatten_array(result=[], objs=targets)):
             if isinstance(element, VisualElement):
                 if getattr(element, "master", None) is None:
-                    raise ValueError("Element has no master bound; cannot log state.")
+                   self.warning("Element %s  has no master bound; cannot log state.",element)
+                   continue
                 self.log_element_state(element, label=f"{label}.element[{idx}]", level=level)
                 
     def log_element_state(
@@ -137,6 +137,7 @@ class DebugLogger:
         Errors out if the element has no master bound.
         """
         from Structures.base import VisualElement
+        from Components.snapshot import get_mobject_state
 
         master = getattr(element, "master", None)
         if master is None:
@@ -164,8 +165,8 @@ class DebugLogger:
             "z_index": getattr(element, "z_index", None),
             "opacity": getattr(element, "opacity", None),
             "submobjects": [type(sm).__name__ for sm in element.submobjects],
-            "body": VisualElement.get_mobject_state(body, depth=depth),
-            "text": VisualElement.get_mobject_state(text, depth=depth) if text is not None else {},
+            "body": get_mobject_state(body, depth=depth),
+            "text": get_mobject_state(text, depth=depth) if text is not None else {},
         }
         log_fn("element.state %s\n%s", label, pformat(payload, indent=2, width=120))
         
