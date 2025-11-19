@@ -116,7 +116,6 @@ class VisualArray(VisualStructure,Generic[T]):
         self.text_color = text_color
         self.element_width = element_width
         self.element_height = element_height
-        self._layout_proxy: Mobject | None = None
         self._instantialized = False
         self._iter_pointer = None
 
@@ -304,7 +303,7 @@ class VisualArray(VisualStructure,Generic[T]):
     def append(self,data:Any|VisualElement,runtime=0.5,recenter=True) -> None:
         data_value = data.value if isinstance(data,VisualElement) else data
         self.logger.debug("data_type=%s data_value=%s",type(data),data_value)
-        
+        before_move = self.get_center()
         if not self._instantialized:
             self.play(self.create())
         if isinstance(data,VisualElement):
@@ -331,10 +330,11 @@ class VisualArray(VisualStructure,Generic[T]):
         self.add(cell)
         self.elements.append(cell)
         self.play(self.create(cells=[cell]))
+        self.logger.debug("Elements after append: %s",self.elements)
         
        
         if recenter: 
-            self.move_to(self.pos)
+            self.move_to(before_move)
             
         self.logger.debug("array.append value=%s -> len=%d", data, len(self.elements))
         
@@ -436,8 +436,9 @@ class VisualArray(VisualStructure,Generic[T]):
         """Creates the Cell object or index passed, defaults to creating the entire array"""
         def instantiate(raw_data,position):
             self.logger.debug(
-                "array.create start len=%d pos=%s",
+                "array.create start len=%d target_pos=%s center=%s",
                 len(raw_data),
+                np.array2string(position, precision=2),
                 np.array2string(self.get_center(), precision=2),
             )
             
