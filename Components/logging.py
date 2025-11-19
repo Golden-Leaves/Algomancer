@@ -86,6 +86,7 @@ class DebugLogger:
         structure: "VisualStructure",
         label: str = "state",
         elements: list["VisualElement"] | None = None,
+        depth: int = 1,
         level: str = "debug",
     ) -> None:
         """Log structure state and optionally its elements' state.
@@ -116,12 +117,14 @@ class DebugLogger:
         log_fn("structure.state %s\n%s", label, pformat(struct_payload, indent=2, width=120))
 
         targets:list[VisualElement] = elements if elements is not None else getattr(structure, "elements", [])
-        for idx, element in enumerate(flatten_array(result=[], objs=targets)):
-            if isinstance(element, VisualElement):
-                if getattr(element, "master", None) is None:
-                   self.warning("Element %s  has no master bound; cannot log state.",element)
-                   continue
-                self.log_element_state(element, label=f"{label}.element[{idx}]", level=level)
+        if depth - 1 > 0:
+            for idx, element in enumerate(flatten_array(result=[], objs=targets)):
+                if isinstance(element, VisualElement):
+                    if getattr(element, "master", None) is None:
+                        self.warning("Element %s  has no master bound; cannot log state.",element)
+                        continue
+                self.log_element_state(element, label=f"{label}.element[{idx}]", level=level,depth=depth - 1)
+        return
                 
     def log_element_state(
         self,
@@ -138,7 +141,7 @@ class DebugLogger:
         """
         from Structures.base import VisualElement
         from Components.snapshot import get_mobject_state
-
+        
         master = getattr(element, "master", None)
         if master is None:
             raise ValueError("Element has no master bound; cannot log state.")
@@ -169,4 +172,5 @@ class DebugLogger:
             "text": get_mobject_state(text, depth=depth) if text is not None else {},
         }
         log_fn("element.state %s\n%s", label, pformat(payload, indent=2, width=120))
+        return
         
