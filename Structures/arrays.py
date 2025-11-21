@@ -139,7 +139,7 @@ class VisualArray(VisualStructure,Generic[T]):
             return self.elements[index.value]
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
             self.play([self.highlight(index,runtime=0.2),self.unhighlight(index,runtime=0.2)])
-        return self.get_element(index)
+        return self.get_element(index).value
     
     def __setitem__(self, index, value):
         if self.scene and is_animating() and not self.scene.in_play:
@@ -300,7 +300,7 @@ class VisualArray(VisualStructure,Generic[T]):
     
    
     
-    def append(self,data:Any|VisualElement,runtime=0.5,recenter=True) -> None:
+    def append(self,data:Any|VisualElement,runtime=0.5,recenter=False) -> None:
         data_value = data.value if isinstance(data,VisualElement) else data
         self.logger.debug("data_type=%s data_value=%s",type(data),data_value)
         before_move = self.get_center()
@@ -324,8 +324,6 @@ class VisualArray(VisualStructure,Generic[T]):
             cell_position = self.pos
             
         cell.move_to(cell_position)
-        if isinstance(last_cell,Rectangle):
-            self.elements.remove(last_cell)
         
         self.add(cell)
         self.elements.append(cell)
@@ -333,7 +331,7 @@ class VisualArray(VisualStructure,Generic[T]):
         self.logger.debug("Elements after append: %s",self.elements)
         
        
-        if recenter: 
+        if recenter:
             self.move_to(before_move)
             
         self.logger.debug("array.append value=%s -> len=%d", data, len(self.elements))
@@ -411,7 +409,7 @@ class VisualArray(VisualStructure,Generic[T]):
             np.array2string(pos_2, precision=2),
         )
 
-
+        self.logger.debug("Cell types: %s %s",cell_1,cell_2)
         move_1 = self.move_cell(cell_1, target_pos=pos_2.copy(), runtime=runtime)
         move_2 = self.move_cell(cell_2, target_pos=pos_1.copy(), runtime=runtime)
 
