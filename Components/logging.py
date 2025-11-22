@@ -81,12 +81,12 @@ class DebugLogger:
     def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self.logger.error(msg, *args, **kwargs)
         
-    def log_stucture_state(
+    def log_structure_state(
         self,
         structure: "VisualStructure",
         label: str = "state",
         elements: list["VisualElement"] | None = None,
-        depth: int = 1,
+        depth: int = 2,
         level: str = "debug",
     ) -> None:
         """Log structure state and optionally its elements' state.
@@ -94,13 +94,12 @@ class DebugLogger:
         from Components.helpers import flatten_array
         from Structures.base import VisualElement
         import numpy as np
-
         logger = getattr(self, "logger", None)
         if logger is None:
             return
         log_fn = getattr(logger, level.lower(), None) or logger.debug
 
-        struct_payload = {
+        structure_payload = {
             "label": label,
             "type": type(structure).__name__,
             "id": hex(id(structure)),
@@ -113,18 +112,14 @@ class DebugLogger:
             "submobjects": [type(sm).__name__ for sm in getattr(structure, "submobjects", [])],
             "element_count": len(getattr(structure, "elements", [])),
         }
-        # Pretty print to put attributes on separate lines with indent
-        log_fn("structure.state %s\n%s", label, pformat(struct_payload, indent=2, width=120))
+        log_fn("structure.state %s\n%s", label, pformat(structure_payload, indent=2, width=120))
 
-        targets:list[VisualElement] = elements if elements is not None else getattr(structure, "elements", [])
+        target_elements = elements if elements is not None else getattr(structure, "elements", [])
         if depth - 1 > 0:
-            for idx, element in enumerate(flatten_array(result=[], objs=targets)):
-                if isinstance(element, VisualElement):
-                    if getattr(element, "master", None) is None:
-                        self.warning("Element %s  has no master bound; cannot log state.",element)
-                        continue
-                self.log_element_state(element, label=f"{label}.element[{idx}]", level=level,depth=depth - 1)
-        return
+            for idx, element in enumerate(flatten_array(result=[], objs=target_elements)):
+                if not isinstance(element, VisualElement):
+                    continue
+                self.log_element_state(element, label=f"{label}.element[{idx}]", level=level, depth=depth - 1)
                 
     def log_element_state(
         self,
