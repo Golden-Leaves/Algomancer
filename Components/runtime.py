@@ -35,25 +35,21 @@ config.samples=CFG.render.samples
 ANIMATION_CONTEXT = contextvars.ContextVar("ANIMATION_CONTEXT", default=False) 
 CURRENT_LINE = contextvars.ContextVar("CURRENT_LINE", default=None)
 @contextlib.contextmanager
-def animation_context():
+def enable_animation():
     """Temporarily enable animation mode for user-level operations."""
-    previous_trace = sys.gettrace()
     token = ANIMATION_CONTEXT.set(True)
+    previous_tracer = sys.gettrace()
 
-    def tracer(frame, event, arg):
+    def trace(frame, event, arg):
         if event == "line":
-            code = frame.f_code
-            line_number = frame.f_lineno
-            filename = code.co_filename
-            function_name = code.co_name
-            CURRENT_LINE.set((filename, line_number, function_name))
-        return tracer
+            CURRENT_LINE.set((frame.f_code.co_filename, frame.f_lineno, frame.f_code.co_name))
+        return trace
 
     try:
-        sys.settrace(tracer)
-        yield  # "Pause" and let the user do whatever
+        sys.settrace(trace)
+        yield
     finally:
-        sys.settrace(previous_trace)  #Resets tracer state
+        sys.settrace(previous_tracer)
         ANIMATION_CONTEXT.reset(token)
         CURRENT_LINE.set(None)
         
@@ -61,7 +57,7 @@ def animation_context():
 def is_animating() -> bool:
     """Return True if currently inside an animation context."""
     return ANIMATION_CONTEXT.get()
-
+        
 class AlgoScene(Scene):
     """Scene subclass that tracks play state, registered structures, and drag-scaling."""
 
@@ -88,7 +84,7 @@ class AlgoScene(Scene):
     @contextlib.contextmanager
     def animation_context(self):
         #Do this so the user doesn't need to import the other one but simply do "with self.animation_context():"
-        with animation_context():
+        with enable_animation():
             yield
 
     @property
@@ -97,24 +93,35 @@ class AlgoScene(Scene):
 
     def play(self, *anims, **kwargs): 
         self.logger.info(anims)
-        return self.player.play(*anims, source=None, **kwargs)
+       
+        resolved = []
+        for anim in flatten_array(result=[],objs=anims):
+            if not anim:
+                continue
+            anim = anim.build() if isinstance(anim, LazyAnimation) else anim
+            if not isinstance(anim, Animation):
+                raise TypeError(f"Unexpected {type(anim)} passed to play()")
+            resolved.append(anim)
+        if resolved:
+            self.logger.debug("List of animations(inside check): %s", resolved)
+        for anim in resolved:
+            self.player.play(anim, source=None, **kwargs)
     
-    def register_structure(self,structure:VisualStructure) -> None:
+    def register_structure(self, structure: VisualStructure) -> None:
         """Remember a structure so we can find it later."""
         self._structures[id(structure)] = structure
     
-    def get_structure_under_cursor(self,point) -> VisualStructure:
+    def get_structure_under_cursor(self, point) -> VisualStructure:
         """Return the top-most structure whose rectangle contains the given point."""
         for structure in reversed(list(self._structures.values())):
             if structure is None:
                 continue
-
             x_min,x_max = structure.get_left()[0],structure.get_right()[0]
             y_min,y_max = structure.get_bottom()[1],structure.get_top()[1]
             if (x_min <= point[0] <= x_max) and (y_min <= point[1] <= y_max):
                 return structure
     
-    def _start_drag(self,structure:VisualStructure,point) -> None:
+    def _start_drag(self, structure: VisualStructure, point) -> None:
         """Lock in the grab point so drag updates scale around this reference."""
         origin = structure.get_center()
         vec = point - origin
@@ -134,7 +141,7 @@ class AlgoScene(Scene):
         }
     
     
-    def _update_drag(self,point) -> bool:
+    def _update_drag(self, point) -> bool:
         """Adjust the active structure's scale based on the current cursor position."""
         structure_under_point = self.get_structure_under_cursor(point=point)
         state = self._active_structure
@@ -149,7 +156,7 @@ class AlgoScene(Scene):
         if not state:
             if structure_under_point is None: #Theres no structure under the cursor, prevents "scaling" when clicking elsewhere
                 return False
-            self._start_drag(structure=structure_under_point,point=point)
+            self._start_drag(structure=structure_under_point, point=point)
             state = self._active_structure
             if not state:
                 return False
@@ -162,7 +169,7 @@ class AlgoScene(Scene):
         incremental = scale_factor / state["scale"] #Divide by previous scale to get actual scale(we want additive scaling)
         if not np.isfinite(incremental) or incremental == 0:
             return False
-        structure.scale(incremental,about_point=state["origin"])
+        structure.scale(incremental, about_point=state["origin"])
         state["scale"] = scale_factor
         return True
         
@@ -187,14 +194,15 @@ class AlgoScene(Scene):
     def on_key_press(self, symbol, modifiers) -> None: #Symbol is the key pressed, while modifiers are keys held(CTRL,...)
         from pyglet.window import key
         import time
+        
         def cooldown_ended(cooldown:float=0.2) -> bool:
             now = time.time()
-            return True if now - self._last_toggle > cooldown else False  #Default 200ms between each press minimum
+            return True if now - self._last_toggle > cooldown else False  #Default 200ms between each key combination
         
         if symbol in self._keys_down: #Guards against repetitive spam , e.g when some one holds ctrl + p
             return
         
-        if symbol == key.SPACE: #Pausing and Playing
+        if symbol == key.SPACE:
             self._keys_down.add(key.SPACE)
             if cooldown_ended():
                 if self.player.state == PlaybackState.PLAYING:
@@ -203,19 +211,12 @@ class AlgoScene(Scene):
                     self.player.resume()
                 self._last_toggle = time.time()
                 
-        if symbol == key.PERIOD: #Advance 1 frame
+        if symbol == key.PERIOD:
             self._keys_down.add(key.PERIOD)
             if cooldown_ended(cooldown=0.1):
                 if self.player.state == PlaybackState.PAUSED:
                     self.player.step_frames(frames=1)
                 self._last_toggle = time.time()
-        
-        # if symbol == key.RIGHT:
-        #     self._keys_down.add(key.RIGHT)
-        #     if cooldown_ended(cooldown=0):
-        #         if self.player.state == PlaybackState.PAUSED:
-        #             self.player.seek_seconds(seconds=1)
-        #         self._last_toggle = time.time()
             
         
                 
@@ -226,11 +227,29 @@ class AlgoScene(Scene):
             self._keys_down.remove(symbol)
         return super().on_key_release(symbol, modifiers)
 
-def get_current_line_metadata() :
-    return CURRENT_LINE.get()
 
-class AlgoSlide(Slide,AlgoScene):
-    pass
+
+class AlgoSlide(Slide, AlgoScene):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def next_slide(self, loop: bool = False, *args, **kwargs):
+        """Advances to the next slide in the presentation.
+
+        If loop is True, the animation will continually replay itself
+
+        Parameters
+        ----------
+        loop : bool, optional
+            If loop is True, the animation will continually replay itself\n
+            Defaults to False.
+        *args : Any
+            Additional arguments to pass to the underlying `Slide.next_slide` method.
+        **kwargs : Any
+            Additional keyword arguments to pass to the underlying `Slide.next_slide` method.
+        """
+        super().next_slide(loop=loop, *args, **kwargs)
+        
 class PlaybackState(str, Enum):
     """Lifecycle states for PlaybackController."""
 
@@ -257,31 +276,28 @@ class PlaybackController:
         
         self._step_time_delta:float = 0.0 #Time difference for n frames stepped
         self._last_t:float = 0.0
-        
-    def play(self,*anims, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
+    def capture_data(self):
+        pass
+    def play(self,*anims,capture:bool=True, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         import threading
         import time
         #Some functionality were taken from manim's repo
         #https://github.com/ManimCommunity/manim/blob/main/manim
-        def resolve_animations(animations:list[Animation|LazyAnimation]) -> list[Animation]:
-            """Return Animation instances from mixed play() inputs.\n
-            Will raise `TypeError` if an entry can't be resolved
-            """
-            resolved = []
-            for anim in flatten_array(result=[],objs=animations):
-                if not anim:
-                    continue
-                anim = anim.build() if isinstance(anim, LazyAnimation) else anim
-                if not isinstance(anim, Animation):
-                    raise TypeError(f"Unexpected {type(anim)} passed to play()")
-                resolved.append(anim)
-            if resolved:
-                self.logger.debug("List of animations(inside check): %s", resolved)
-            return resolved
-        
         def begin_animations(
             scene:AlgoScene,renderer:CairoRenderer|OpenGLRenderer,
             animations:list[Animation], **kwargs) -> None:
+            """Initialize rendering state for the given scene and animations.
+            Parameters
+            ----------
+            scene : AlgoScene
+                Scene instance whose renderer, file writer, and animations are managed.
+            renderer : CairoRenderer | OpenGLRenderer
+                Renderer instance to manage the rendering state.
+            animations : list[Animation]
+                List of Animation instances to render.
+            **kwargs
+                Additional keyword arguments passed to the scene's compile_animation_data method.
+            """
             if not hasattr(renderer, "animations_hashes"):
                 renderer.animations_hashes = []  # type: ignore[attr-defined]
 
@@ -320,7 +336,7 @@ class PlaybackController:
                         renderer,
                         num_frames=int(config.frame_rate * scene.duration),
                     )
-                if renderer.window is not None:
+                if not isinstance(renderer,CairoRenderer) and renderer.window is not None :
                     renderer.window.swap_buffers()
                     while time.time() - renderer.animation_start_time < scene.duration:
                         pass
@@ -363,12 +379,13 @@ class PlaybackController:
             # Closing the progress bar at the end of the play.
             scene.time_progression.close()
         
-        animations = resolve_animations(animations=anims)
+        # animations = resolve_animations(animations=anims)
         type(self.scene)._inside_play_call = True
         if self.state != PlaybackState.PAUSED: 
             self.state = PlaybackState.PLAYING
+            
         self.renderer.animation_start_time = time.time()
-        begin_animations(scene=self.scene, renderer=self.renderer, animations=animations)
+        begin_animations(scene=self.scene, renderer=self.renderer, animations=anims)
         
         if self.scene.is_current_animation_frozen_frame():  # Frozen frame
             render_frozen_frame(self.renderer, self.scene)
