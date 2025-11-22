@@ -214,6 +214,15 @@ class VisualArray(VisualStructure,Generic[T]):
 
           
     def set_value(self,index:int|Cell,value:Any) -> Succession|Transform:
+        """Update the value cell for ``index`` and animate the change when possible.
+        
+        Args:
+            index (int or Cell): Index of the cell to update or the Cell object itself.
+            value (Any): New value to set for the cell.
+            
+        Returns:
+            Succession or Transform: Animation to update the cell's value.
+        """
         def build():
             cell:Cell = self.get_element(index)
             animation = cell.set_value(value, color=self.text_color)
@@ -262,45 +271,67 @@ class VisualArray(VisualStructure,Generic[T]):
         
             
 
-    def move_cell(self,cell:int|Cell,target_pos,runtime=1,direction="up") -> Succession:
+    def move_cell(self, cell: int | Cell, target_position: np.ndarray, runtime: float = 1.0, direction: str = "up") -> Succession:
         """Moves specified cell to desired position"""
-        cell:Cell = self.get_element(cell)
-        try:
-            idx = self.get_index(cell)
-        except Exception:
-            idx = None
-        #Freeze vectors so later moves don't affect targets
-        start = np.array(cell.center, dtype=float).copy()
-        target_pos = np.array(target_pos, dtype=float).copy()
-            
-        
-            
-       
-        
-        # if bezier:
-        #     ctrl1 = start + shift_vec * lift
-        #     ctrl2 = target_pos + shift_vec * lift
-        #     arc_path = CubicBezier(start,ctrl1,ctrl2,target_pos) #The cell lifts then moves in an arc to the desired location
-        #     return MoveAlongPath(cell,arc_path,runtime=runtime)
-        
+        cell_element = self.get_element(cell)
+        start_position = np.array(cell_element.center, dtype=float).copy()
+        target_position = np.array(target_position, dtype=float).copy()
 
-        # hop_pos = start + shift_vec * (cell.body_height + lift) #Makes it go up by height
-        hop_pos = get_offset_position(element=cell,direction=UP)
-
-        x_shift = np.array([target_pos[0], hop_pos[1], start[2]])
-        y_shift = np.array([target_pos[0], target_pos[1], start[2]])
+        hop_position = get_offset_position(element=cell_element, direction=direction)
+        x_shift_position = np.array([target_position[0], hop_position[1], start_position[2]])
+        y_shift_position = np.array([target_position[0], target_position[1], start_position[2]])
 
         cell_shift = Succession(
-            ApplyMethod(cell.move_to, hop_pos),
-            ApplyMethod(cell.move_to, x_shift),
-            ApplyMethod(cell.move_to, y_shift),
+            ApplyMethod(cell_element.move_to, hop_position),
+            ApplyMethod(cell_element.move_to, x_shift_position),
+            ApplyMethod(cell_element.move_to, y_shift_position),
         )
-        self.logger.debug("array.move_cell index=%s target=%s rt=%.2f", idx, np.array2string(target_pos, precision=2), runtime)
         return cell_shift
+    
+    def move_to(self, target_position: np.ndarray,run_time:float=1.0) -> None:
+        """Moves all elements in the array to the desired position.
+
+        Parameters
+        ----------
+        target_position : np.ndarray
+            The desired position for the center of the array.
+
+        Returns
+        -------
+        None
+        """
+        from Structures.base import _COMPARE_GUARD
+        token = _COMPARE_GUARD.set(True)
+        try:
+            target_position = target_position.copy()
+            cell_shifts = []
+            for i, element in enumerate(self.elements):
+                center_shift = (len(self.elements)-1)/2
+                cell_target_position = [target_position[0] + (i - center_shift),target_position[1],target_position[2]]
+                cell_shift = ApplyMethod(element.move_to, cell_target_position,run_time=run_time)
+                cell_shifts.append(cell_shift)
+            self.play(cell_shifts)
+        finally:
+            _COMPARE_GUARD.set(token)
     
    
     
     def append(self,data:Any|VisualElement,runtime=0.5,recenter=False) -> None:
+        """Appends an element to the array.
+
+        Parameters
+        ----------
+        data : Any | VisualElement
+            The value to append to the array.
+        runtime : float, optional
+            The runtime of the animation.
+        recenter : bool, optional
+            Whether to recenter the array after appending.
+
+        Returns
+        -------
+        None
+        """
         data_value = data.value if isinstance(data,VisualElement) else data
         self.logger.debug("data_type=%s data_value=%s",type(data),data_value)
         before_move = self.get_center()
@@ -354,6 +385,22 @@ class VisualArray(VisualStructure,Generic[T]):
         self.logger.debug("array.del index=%s -> len=%d", idx, len(self.elements))
 
     def pop(self,index:int|Cell=-1,runtime=0.5) -> Any:
+        """Removes and returns the element at the given index.
+
+        Animates the popping and shifting of cells to fill up the popped cell.
+
+        Parameters
+        ----------
+        index : int | Cell
+            The index or cell to pop.
+        runtime : float, optional
+            The runtime of the animation.
+
+        Returns
+        -------
+        Any
+            The popped cell's value.
+        """
         mid = len(self.elements) // 2
         popped_cell:Cell = self.get_element(index)
       
@@ -379,7 +426,6 @@ class VisualArray(VisualStructure,Generic[T]):
         return popped_cell.value
     
     def insert(self,data,index:int|Cell,runtime=0.5) -> None:
-
         self.append(data)
         self.play(self.shift_cell(from_idx=len(self.elements) - 1,to_idx=index))
         self.logger.debug("array.insert index=%s value=%s -> len=%d", index, data, len(self.elements))
@@ -469,7 +515,7 @@ class VisualArray(VisualStructure,Generic[T]):
                     offset = (idx - center_shift) * element_width 
                     cell.move_to(position + RIGHT * offset)
                 
-            self.move_to(position)
+            super(VisualArray,self).move_to(position)
             self.set_opacity(0)  
             if not self.scene:
                 return None
