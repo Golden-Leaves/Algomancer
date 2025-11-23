@@ -116,15 +116,20 @@ class Pointer(VisualElement):
         operation = get_operation(op=op)
         #If i = 2, we want 1 + i = 3, 1 is our main object here and not the pointer, hence other_on_left
         new_index = operation(other, self.value) if other_on_left else operation(self.value, other)
-
+        #Handle negative indices later
         if mutate: #For self-assignement operations
-            if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-                anim = self.move_pointer(old_index=self.value, new_index=new_index)
-                self.master.play(anim)
+          
+            if new_index < len(self.master):
+                if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
+                    anim = self.move_pointer(old_index=self.value, new_index=new_index)
+                    self.master.play(anim)
+                    self.value = new_index
+                    return self
                 self.value = new_index
                 return self
-            self.value = new_index
-            return self
+            else:
+                self.destroy()
+        
 
         return new_index
        
@@ -248,8 +253,13 @@ class Pointer(VisualElement):
     def move_pointer(self,old_index:int,new_index:int):
         old_index = old_index.value if isinstance(old_index,VisualElement) else old_index
         new_index = new_index.value if isinstance(new_index,VisualElement) else new_index
+        
         old_master_element = self.master.get_element(old_index)
-        master_element:VisualElement = self.master.get_element(new_index)
+        try:
+            master_element:VisualElement = self.master.get_element(new_index)
+        except IndexError:
+            raise IndexError(f"Invalid index {new_index}. Valid range is 0 to {len(self.master.elements) - 1}. Pointer could not be moved")
+        
         old_pos = get_offset_position(old_master_element, direction=self.direction,buff=0.05)
         new_pos = get_offset_position(master_element, direction=self.direction,buff=0.05)
         arrow_pos = new_pos - old_pos
