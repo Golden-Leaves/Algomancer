@@ -27,11 +27,12 @@ class Cell(VisualElement):
         super().__init__(body=self.body,master=master,value=self.value,**kwargs)
 
         
-
-
-        text_scale = 0.4 * cell_height / MathTex(0).height #38% of cell area
+        self.text = MathTex(value).set_color(text_color)
+        pad_w = 0.85 
+        pad_h = 0.85 
+        text_scale = min(pad_w * (cell_width / self.text.height), pad_h * (cell_width / self.text.width)) #pad * old_ratio = new_ratio
+        self.text.scale(text_scale)
         self._base_text_color = text_color
-        self.text = MathTex(value).set_color(text_color).scale(text_scale)
         self.text.move_to(self.body.get_center())
         self.text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
         self.body.z_index = 0
@@ -47,7 +48,9 @@ class Cell(VisualElement):
         """Update the cell's stored value and return the corresponding text transform."""
         resolved = value.value if hasattr(value, "value") else value
         text_color = color or self._base_text_color
-        text_scale = 0.45 * self._cell_height / MathTex(0).height
+        pad_w = 0.85 
+        pad_h = 0.85 
+        text_scale = min(pad_w * (self._cell_height / self.text.height), pad_h * (self._cell_width / self.text.width)) #pad * old_ratio = new_ratio
         new_text = MathTex(resolved).set_color(text_color).scale(text_scale)
         new_text.move_to(self.body.get_center())
         new_text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
@@ -80,7 +83,7 @@ class Cell(VisualElement):
         return clone
     
 class VisualArray(VisualStructure,Generic[T]):
-    def __init__(self,data:Any,scene:AlgoScene|None=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
+    def __init__(self,data:Any,scene:AlgoScene=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
                 label:str=None,
                 **kwargs):
         """
@@ -109,14 +112,14 @@ class VisualArray(VisualStructure,Generic[T]):
               Defaults to ORIGIN on each axis.
         """
         self.logger = DebugLogger(logger_name=__name__, output=False)
-        self._raw_data = list(data) #The original structure the user passed in, maybe don't touch this beyond create()
+        self._raw_data = data if isinstance(data, list) else list(data) #The original structure the user passed in, maybe don't touch this beyond create()
         self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)
         self.rounded = kwargs.pop("rounded",False)
         self.text_color = text_color
         self.element_width = element_width
         self.element_height = element_height
-        self._instantialized = False
+        self._instantiated = False
         self._iter_pointer = None
 
         self.logger.info(
@@ -271,7 +274,7 @@ class VisualArray(VisualStructure,Generic[T]):
         
             
 
-    def move_cell(self, cell: int | Cell, target_position: np.ndarray, runtime: float = 1.0, direction: str = "up") -> Succession:
+    def move_cell(self, cell: int | Cell, target_position: np.ndarray, runtime: float = 1.0, direction = UP) -> Succession:
         """Moves specified cell to desired position"""
         cell_element = self.get_element(cell)
         start_position = np.array(cell_element.center, dtype=float).copy()
@@ -316,7 +319,7 @@ class VisualArray(VisualStructure,Generic[T]):
     
    
     
-    def append(self,data:Any|VisualElement,runtime=0.5,recenter=False) -> None:
+    def append(self,data:Any|VisualElement,runtime=0.5,recenter=True) -> None:
         """Appends an element to the array.
 
         Parameters
@@ -335,7 +338,7 @@ class VisualArray(VisualStructure,Generic[T]):
         data_value = data.value if isinstance(data,VisualElement) else data
         self.logger.debug("data_type=%s data_value=%s",type(data),data_value)
         before_move = self.get_center()
-        if not self._instantialized:
+        if not self._instantiated:
             self.play(self.create())
         if isinstance(data,VisualElement):
             data:VisualElement = data.value
@@ -425,71 +428,44 @@ class VisualArray(VisualStructure,Generic[T]):
         
         return popped_cell.value
     
-    def insert(self,data,index:int|Cell,runtime=0.5) -> None:
+    def insert(self,data,index:int|Cell) -> None:
         self.append(data)
         self.play(self.shift_cell(from_idx=len(self.elements) - 1,to_idx=index))
         self.logger.debug("array.insert index=%s value=%s -> len=%d", index, data, len(self.elements))
         
     
     def swap(self, idx_1: VisualElement|int, idx_2: VisualElement|int, color=YELLOW, runtime=0.5) -> Succession:
-        """
-        Swaps two elements that may or may not be from different structures
-        """
-        if not isinstance(idx_1,(VisualElement,int)) or not isinstance(idx_2,(VisualElement,int)):
-            print("swap() only accepts VisualElements or ints")
-            raise TypeError
+        """Swaps two elements that may or may not be from different structures"""
+        if not isinstance(idx_1, (VisualElement, int)) or not isinstance(idx_2, (VisualElement, int)):
+            raise TypeError("swap() only accepts VisualElements or ints")
 
-        cell_1 = idx_1 if isinstance(idx_1,VisualElement) else self.get_element(idx_1)
-        cell_2 = idx_2 if isinstance(idx_2,VisualElement) else self.get_element(idx_2)
-        idx_1 = idx_1.master.get_index(idx_1) if isinstance(idx_1,VisualElement) else idx_1
-        idx_2 = idx_2.master.get_index(idx_2) if isinstance(idx_2,VisualElement) else idx_2
+        cell_1 = self.get_element(idx_1) if isinstance(idx_1, int) else idx_1
+        cell_2 = self.get_element(idx_2) if isinstance(idx_2, int) else idx_2
 
-        # Freeze absolute targets so they don't drift when the first move runs
+        idx_1 = cell_1.master.get_index(cell_1) if isinstance(idx_1, VisualElement) else idx_1
+        idx_2 = cell_2.master.get_index(cell_2) if isinstance(idx_2, VisualElement) else idx_2
+
         pos_1 = np.array(cell_1.center, dtype=float).copy()
         pos_2 = np.array(cell_2.center, dtype=float).copy()
-        self.logger.debug(
-            "array.swap start i=%s j=%s pos_i=%s pos_j=%s",
-            idx_1,
-            idx_2,
-            np.array2string(pos_1, precision=2),
-            np.array2string(pos_2, precision=2),
-        )
 
-        self.logger.debug("Cell types: %s %s",cell_1,cell_2)
-        move_1 = self.move_cell(cell_1, target_pos=pos_2.copy(), runtime=runtime)
-        move_2 = self.move_cell(cell_2, target_pos=pos_1.copy(), runtime=runtime)
+        move_1 = self.move_cell(cell_1, target_position=pos_2.copy(), runtime=runtime)
+        move_2 = self.move_cell(cell_2, target_position=pos_1.copy(), runtime=runtime)
 
-        # Defer the actual list swap until after animations complete to avoid
-        # mid-flight lookups snapping elements back to their old slots.
         finalize = Wait(0)
-        original_finish = finalize.finish
 
         def _finish_swap():
-            original_finish()
+            finalize.finish()
             self.elements[idx_1], self.elements[idx_2] = self.elements[idx_2], self.elements[idx_1]
-            self.logger.debug("array.swap finalize i=%s j=%s", idx_1, idx_2)
 
         finalize.finish = _finish_swap
 
-        # return Succession(AnimationGroup(move_1, move_2, lag_ratio=0.2), finalize)
-        return Succession(move_1,move_2,finalize,runtime=runtime)
+        return Succession(move_1, move_2, finalize, runtime=runtime)
     
 
 
-    def create(self,cells:list[Cell]|int=None,runtime=0.5) -> AnimationGroup:
+    def create(self, cells: list[Cell] | None = None, runtime: float = 0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
-        def instantiate(raw_data,position):
-            self.logger.debug(
-                "array.create start len=%d target_pos=%s center=%s",
-                len(raw_data),
-                np.array2string(position, precision=2),
-                np.array2string(self.get_center(), precision=2),
-            )
-            
-            anchor = np.array(self.get_center())
-            if not np.allclose(anchor, 0):
-                position = anchor
-        
+        def instantiate(raw_data, position):
             for text in raw_data:
                 cell = Cell(
                     value=text,
@@ -502,50 +478,34 @@ class VisualArray(VisualStructure,Generic[T]):
                 )
                 self.add(cell)
                 self.elements.append(cell)
-                
-            for cell in self.elements:
-                cell.set_opacity(0)
-            self._instantialized = True
-          
-            if self.elements: #position offset logic
+
+            self._instantiated = True
+
+            if self.elements:
                 element_width = float(self.element_width)
                 center_shift = (len(self.elements) - 1) / 2
                 for idx, cell in enumerate(self.elements):
-                    #Indexes lower than center_shift will go left, higher will go right
-                    offset = (idx - center_shift) * element_width 
+                    offset = (idx - center_shift) * element_width #Distribute cells evenly based on a center point
                     cell.move_to(position + RIGHT * offset)
-                
-            super(VisualArray,self).move_to(position)
-            self.set_opacity(0)  
-            if not self.scene:
-                return None
-            
-        if not self._instantialized:
-            instantiate(raw_data=self._raw_data,position=self.pos)
+            super(VisualArray, self).move_to(position)
+
+
+        if not self._instantiated:
+            instantiate(raw_data=self._raw_data, position=self.pos)
 
         if not self.scene:
             return None
 
-        #Update stored anchor to reflect any external positioning (e.g., arrange/shift)
-        self.pos = np.array(self.get_center())
-        self.set_opacity(1)
+        self.pos = np.array(self.get_center()) #Update anchor in case it moved
 
         if cells is None:
-            cells:list[Cell] = self.elements
+            cells = self.elements
         if not cells:
             return Wait(1e-6)
-        
-        
-        #AnimationGroup in here controls cell vs text behaviour
-        runtime = max(0.5,runtime) #Stuff gets ugly if less than 0.5
+
         cell_anims = [cell.create(runtime=runtime) for cell in cells]
-        
-    
-        return AnimationGroup( 
-            *cell_anims,
-            lag_ratio=0.1,
-            runtime=runtime
-        )
+
+        return AnimationGroup(*cell_anims, lag_ratio=0.1, runtime=runtime)
 
         
         
