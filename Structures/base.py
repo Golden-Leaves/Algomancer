@@ -2,9 +2,9 @@ from __future__ import annotations
 from manim import *
 import numpy as np
 from Components.ops import get_operation, resolve_value
-from Components.runtime import AlgoScene, get_current_line_metadata, is_animating
+from Components.runtime import AlgoScene, is_animating,CURRENT_LINE
 from Components.effects import EffectsManager
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING,Callable
 import contextvars
 import weakref
 _COMPARE_GUARD = contextvars.ContextVar("_COMPARE_GUARD", default=False)
@@ -29,38 +29,35 @@ class VisualStructure(VGroup):
         Additional positioning options that mirror Manim's ``VGroup`` constructor
         (e.g. ``pos`` or ``x``/``y``/``z`` coordinates).
     """
-    def __init__(self, scene:AlgoScene,label:str, **kwargs):
-        start_pos = kwargs.pop("start_pos", None)
-        if start_pos is not None:
-            self._pos = np.array(start_pos, dtype=float)
+    def __init__(self, scene: AlgoScene, label: str, **kwargs):
+        self._position = kwargs.pop("start_pos", None)
+        if self._position is not None:
+            self._position = np.array(self._position, dtype=float)
         else:
-            x = kwargs.get("x", None)
-            y = kwargs.get("y", None)
-            z = kwargs.get("z", None)
-            if x is None and y is None and z is None:
-                self._pos = np.array(ORIGIN, dtype=float)
-            else:
-                x = ORIGIN[0] if x is None else x
-                y = ORIGIN[1] if y is None else y
-                z = ORIGIN[2] if z is None else z
-                self._pos = np.array([x, y, z], dtype=float)
+            self._position = np.array([
+                kwargs.get("x", ORIGIN[0]),
+                kwargs.get("y", ORIGIN[1]),
+                kwargs.get("z", ORIGIN[2]),
+            ], dtype=float)
+
         super().__init__(**kwargs)
-        self._scene_ref = weakref.ref(scene) if scene else None
+        if scene is None:
+            raise ValueError("VisualStructure must be bound to a scene.")
+        self._scene_ref = weakref.ref(scene)
         self.label = label if label else ""
-        self.elements: list[VisualElement] = []
+        self.elements = []
         self._trace = []
-        logger = getattr(self, "logger", None)
-        self.effects = EffectsManager(logger=logger)
+        self.effects = EffectsManager(logger=getattr(self, "logger", None))
         if scene is not None:
             scene.register_structure(self)
     
     @property
     def pos(self) -> np.ndarray:
-        return self._pos
+        return self._position
 
     @pos.setter
     def pos(self, new_pos: np.ndarray | list | tuple) -> None:
-        self._pos = np.array(new_pos, dtype=float)
+        self._position = np.array(new_pos, dtype=float)
         
     def add(self, *mobjects):
         """Ensure Manim duplicate checks use identity, not value-based equality."""
@@ -80,7 +77,7 @@ class VisualStructure(VGroup):
 
     def move_to(self, *args, **kwargs):
         super().move_to(*args, **kwargs)
-        self._pos = np.array(self.get_center(), dtype=float)
+        self._position = np.array(self.get_center(), dtype=float)
         return self
     
     def __len__(self):
@@ -120,14 +117,33 @@ class VisualStructure(VGroup):
             logger:DebugLogger = getattr(self,"logger")
             logger.warning("No Scene bound. Pass scene=... when creating %s.",self)
             raise RuntimeError("No Scene bound. Pass scene=... when creating VisualStructure.")
-        scene.player.play(*anims, source=None, **kwargs)
+       
+        scene.play(*anims,**kwargs)
         for element in self.elements: 
             if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
                 element.master = self
     
                 
     def get_element(self, cell_or_index:VisualElement|int) -> VisualElement:
-        """Error handling opps, can also be used to retrieve an element with an index"""
+        """Error handling opps, can also be used to retrieve an element with an index
+        
+        Parameters
+        ----------
+        cell_or_index : VisualElement | int
+            A VisualElement object or an index of the element in self.elements
+        
+        Returns
+        -------
+        VisualElement
+            The element at the given index or the cell object itself if valid
+        
+        Raises
+        ------
+        IndexError
+            If the index is out of range of self.elements
+        TypeError
+            If the input is neither an int nor a VisualElement object
+        """
         from Structures.pointers import Pointer
     # Case 1: int → lookup in self.elements
         
@@ -146,13 +162,14 @@ class VisualStructure(VGroup):
         
         elif isinstance(cell_or_index, Pointer):
             index = cell_or_index.value
+            # Convert negative index to positive index
             index = index if index >= 0 else index + len(self.elements)
             return self.get_element(index)
         # Case 3: goofy input
         else:
             raise TypeError(
                 f"Expected int or Cell object, got {type(cell_or_index).__name__}."
-            )       
+            )
     def get_index(self, element: VisualElement) -> int:
         """Returns the index of a visual element"""
         elements = getattr(element.master, "elements", None)
@@ -239,20 +256,20 @@ class VisualElement(VGroup):
       (text, highlight rings, etc.) can be added via ``self.add(...)``.
     """
     def __init__(self, body: VMobject=None,master:VisualStructure=None,value:Any=None,label:str=None,**kwargs):
-        self._pos = kwargs.pop("start_pos",None)
-        if self._pos is not None:
-            self._pos = np.array(self._pos)
+        self._position = kwargs.pop("start_pos",None)
+        if self._position is not None:
+            self._position = np.array(self._position)
         
         else:
             x = kwargs.get("x",None)
             y = kwargs.get("y",None)
             z = kwargs.get("z",None)
             if x is None and y is None and z is None: #Fills in missing axis values if not provided
-                self._pos = ORIGIN
+                self._position = ORIGIN
                 x = x if x is not None else ORIGIN[0]
                 y = y if y is not None else ORIGIN[1]
                 z = z if z is not None else ORIGIN[2]
-                self._pos = np.array([x,y,z])
+                self._position = np.array([x,y,z])
         super().__init__(**kwargs)
         self.body = body 
         #Since master has references to elements, and the elements store a reference to the master
@@ -277,11 +294,11 @@ class VisualElement(VGroup):
             
     @property
     def pos(self) -> np.ndarray:
-        return self._pos
+        return self._position
 
     @pos.setter
     def pos(self, new_pos: np.ndarray | list | tuple) -> None:
-        self._pos = np.array(new_pos, dtype=float)
+        self._position = np.array(new_pos, dtype=float)
         
 
     def __getstate__(self): #Strips the master ref while deepcopying(opengl)
@@ -310,7 +327,20 @@ class VisualElement(VGroup):
             return id(self)
 
     def _compare(self, other, op: str):
-        """Internal unified comparison handler."""
+        """Unified comparison handler for VisualElements.
+
+        Resolves the comparison of two elements into a boolean result.
+
+        Supports:
+            - Comparing two VisualElements
+            - comparing a VisualElement to a primitive (int, float, str, bool)
+            - comparing two primitives
+
+        Returns a boolean result of the comparison.
+
+        Raises:
+            ValueError when the comparison is invalid (e.g. comparing a VisualElement to a primitive)
+        """
         if resolve_value(other) is NotImplemented:
             return NotImplemented
         if self is other:
@@ -323,26 +353,15 @@ class VisualElement(VGroup):
         operation = get_operation(op=op)
         result = operation(self.value,other_value)
 
-        # DEBUG
-        if getattr(self, "master", None) is not None and hasattr(self.master, "logger"):
-            idx = None
-            if hasattr(self.master, "elements") and self.master.elements is not None:
-                for i, el in enumerate(self.master.elements):
-                    if el is self:
-                        idx = i
-                        break
+        if self.master and hasattr(self.master, "logger"):
+            idx = next((i for i, el in enumerate(self.master.elements) if el is self), None)
             body = getattr(self, "body", None)
             text = getattr(self, "text", None)
-            text_opacity = (
-                text.get_fill_opacity() if (text is not None and hasattr(text, "get_fill_opacity"))
-                else getattr(text, "fill_opacity", None)
-            )
-            body_opacity = getattr(body, "fill_opacity", None)
             self.master.logger.debug(
                 "compare.visual idx=%s text_opacity=%s body_opacity=%s z_body=%s",
                 idx,
-                text_opacity,
-                body_opacity,
+                getattr(text, "fill_opacity", None),
+                getattr(body, "fill_opacity", None),
                 getattr(body, "z_index", None),
             )
 
@@ -396,9 +415,22 @@ class VisualElement(VGroup):
             return super().__ge__(other)
         return comparison
     
-    def _arith(self, other, op, other_on_left: bool = False):
+    def _arith(self, other: Any, op: str, other_on_left: bool = False) -> Any:
+        """Unified arithmetic handler for VisualElements.
 
-        ARITHMETIC_COLOR_MAP = {
+        Resolves the arithmetic operation of two elements into a result value.
+
+        Supports:
+            - Comparing two VisualElements
+            - comparing a VisualElement to a primitive (int, float, str, bool)
+            - comparing two primitives
+
+        Returns the result value of the arithmetic operation.
+
+        Raises:
+            ValueError when the comparison is invalid (e.g. comparing a VisualElement to a primitive)
+        """
+        ARITHMETIC_COLOR_MAP: dict[str, ManimColor] = {
             "+": BLUE_C,
             "-": GOLD_E,
             "*": PURPLE_A,
@@ -406,39 +438,40 @@ class VisualElement(VGroup):
             "//": ORANGE,
             "%": TEAL_C,
         }
-        SCALE_MAP = {
-        "+": 1.2,
-        "*": 1.3,
-        "-": 0.85,
-        "/": 0.8,
-        "//": 0.8,
-        "%": 0.9,
-    }
+        SCALE_MAP: dict[str, float] = {
+            "+": 1.2,
+            "*": 1.3,
+            "-": 0.85,
+            "/": 0.8,
+            "//": 0.8,
+            "%": 0.9,
+        }
       
-        other_value = resolve_value(other)
+        other_value: Any = resolve_value(other)
         if other_value is NotImplemented:
             return NotImplemented
         
-        left_value = other_value if other_on_left else self.value
-        right_value = self.value if other_on_left else other_value
-        operation = get_operation(op=op)
-        result = operation(left_value,right_value)
-        color = ARITHMETIC_COLOR_MAP[op]
+        left_value: Any = other_value if other_on_left else self.value
+        right_value: Any = self.value if other_on_left else other_value
+        operation: Callable[[Any, Any], Any] = get_operation(op=op)
+        result: Any = operation(left_value,right_value)
+        color: ManimColor = ARITHMETIC_COLOR_MAP[op]
         # DEBUG: concise visual state for arithmetic op
         if getattr(self, "master", None) is not None and hasattr(self.master, "logger"):
-            idx = None
+            idx: int | None = None
             if hasattr(self.master, "elements") and self.master.elements is not None:
                 for i, el in enumerate(self.master.elements):
                     if el is self:
                         idx = i
                         break
-            body = getattr(self, "body", None)
-            text = getattr(self, "text", None)
-            text_opacity = (
+                    
+            body: Mobject | None = getattr(self, "body", None)
+            text: Mobject | None = getattr(self, "text", None)
+            text_opacity: float | None = (
                 text.get_fill_opacity() if (text is not None and hasattr(text, "get_fill_opacity"))
                 else getattr(text, "fill_opacity", None)
             )
-            body_opacity = getattr(body, "fill_opacity", None)
+            body_opacity: float | None = getattr(body, "fill_opacity", None)
             self.master.logger.debug(
                 "arith.visual op=%s idx=%s text_opacity=%s body_opacity=%s z_body=%s",
                 op,
@@ -449,7 +482,7 @@ class VisualElement(VGroup):
             )
 
         if self.master and self.master.scene and is_animating() and not self.master.scene.in_play:
-            master_anim = [ #TODO:Weird text dimming bug occurs if we use Succession or AnimationGroup, that's why a list is used
+            master_anim: list[Animation] = [ #TODO:Weird text dimming bug occurs if we use Succession or AnimationGroup, that's why a list is used
                 self.master.highlight(self, color=color, runtime=0.1),
                 self.master.indicate(self, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
                 self.master.unhighlight(self, runtime=0.15),
@@ -457,9 +490,9 @@ class VisualElement(VGroup):
             self.master.play(*master_anim)
 
             if isinstance(other, VisualElement):
-                other_master:VisualStructure = getattr(other, "master", None)
+                other_master: VisualStructure | None = getattr(other, "master", None)
                 if other_master and other_master.scene and is_animating() is self.master.scene:
-                    other_anim = [
+                    other_anim: list[Animation] = [
                         other_master.highlight(other, color=color, runtime=0.1),
                         other_master.indicate(other, color=color, scale_factor=SCALE_MAP[op], runtime=0.5),
                         other_master.unhighlight(other, runtime=0.15),
@@ -556,37 +589,45 @@ class VisualElement(VGroup):
     # --- Dimensions ---
     @property
     def body_width(self):
-        return self.body.width
+        body = getattr(self, "body", None)
+        return getattr(body, "width", getattr(self, "width", None))
 
     @property
     def body_height(self):
-        return self.body.height
+        body = getattr(self, "body", None)
+        return getattr(body, "height", getattr(self, "height", None))
 
     # --- Positioning ---
     @property
     def center(self):
-        return self.body.get_center()
+        body = getattr(self, "body", None)
+        return body.get_center() if body is not None else self.get_center()
 
     @property
     def top(self):
-        return self.body.get_top()
+        body = getattr(self, "body", None)
+        return body.get_top() if body is not None else self.get_top()
 
     @property
     def bottom(self):
-        return self.body.get_bottom()
+        body = getattr(self, "body", None)
+        return body.get_bottom() if body is not None else self.get_bottom()
 
     @property
     def left(self):
-        return self.body.get_left()
+        body = getattr(self, "body", None)
+        return body.get_left() if body is not None else self.get_left()
 
     @property
     def right(self):
-        return self.body.get_right()
+        body = getattr(self, "body", None)
+        return body.get_right() if body is not None else self.get_right()
 
     # --- Extra geometric points if needed ---
     @property
     def corners(self):
-        return self.body.get_vertices()
+        body = getattr(self, "body", None)
+        return body.get_vertices() if body is not None else self.get_vertices()
 
     @property
     def bounding_box(self):
@@ -607,10 +648,13 @@ class VisualElement(VGroup):
 
     # --- Allow direct shift/scale/rotate if you want ---
     def shift(self, *args, **kwargs):
-        return self.body.shift(*args, **kwargs)
+        body = getattr(self, "body", None)
+        return (body.shift(*args, **kwargs) if body is not None else super().shift(*args, **kwargs))
 
     def scale(self, *args, **kwargs):
-        return self.body.scale(*args, **kwargs)
+        body = getattr(self, "body", None)
+        return (body.scale(*args, **kwargs) if body is not None else super().scale(*args, **kwargs))
 
     def rotate(self, *args, **kwargs):
-        return self.body.rotate(*args, **kwargs)
+        body = getattr(self, "body", None)
+        return (body.rotate(*args, **kwargs) if body is not None else super().rotate(*args, **kwargs))
