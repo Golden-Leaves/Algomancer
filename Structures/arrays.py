@@ -28,7 +28,7 @@ class Cell(VisualElement):
 
         
         self.text = MathTex(value).set_color(text_color)
-        pad_w = 0.85 
+        pad_w = 0.70 
         pad_h = 0.85 
         text_scale = min(pad_w * (cell_width / self.text.height), pad_h * (cell_width / self.text.width)) #pad * old_ratio = new_ratio
         self.text.scale(text_scale)
@@ -139,7 +139,7 @@ class VisualArray(VisualStructure,Generic[T]):
     def __getitem__(self, index):
         self.logger.debug("__getitem__ at index=%s",index)
         if isinstance(index, Pointer):
-            return self.elements[index.value]
+            return self.get_element(index.value).value
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
             self.play([self.highlight(index,runtime=0.2),self.unhighlight(index,runtime=0.2)])
         return self.get_element(index).value
