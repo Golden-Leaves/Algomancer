@@ -6,9 +6,11 @@ from manim_slides import Slide
 import contextvars
 import contextlib
 import sys
+from pathlib import Path
 import weakref
 import numpy as np
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING,Callable,Any,Generator
+from types import FrameType
 from screeninfo import get_monitors
 from enum import Enum
 import os
@@ -32,16 +34,29 @@ config.pixel_height = CFG.render.pixel_height
 config.window_size = compute_window_size(0.75)  #75% of the screen
 config.samples=CFG.render.samples
 
+EXCLUDED_DIRS = {".venv", "site-packages", "manim", "Components","Structures"}
+ACTIVE_SCRIPT = None
+PROJECT_ROOT = Path.cwd().resolve()
+
 ANIMATION_CONTEXT = contextvars.ContextVar("ANIMATION_CONTEXT", default=False) 
 CURRENT_LINE = contextvars.ContextVar("CURRENT_LINE", default=None)
 @contextlib.contextmanager
-def enable_animation():
-    """Temporarily enable animation mode for user-level operations."""
+def enable_animation() -> Generator[None, None, None]:
+    """Temporarily enable animation mode for user-level operations.
+
+    Enables animation mode for the duration of the context manager.
+    Use this context manager to wrap user-level operations that should be
+    animated.
+
+    :return: None
+    :rtype: Generator[None, None, None]
+    """
+    from Components.helpers import is_user_file
     token = ANIMATION_CONTEXT.set(True)
     previous_tracer = sys.gettrace()
-
-    def trace(frame, event, arg):
-        if event == "line":
+   
+    def trace(frame: FrameType, event: str, arg: Any) -> Callable[[FrameType, str, Any], None]:
+        if event == "line" :
             CURRENT_LINE.set((frame.f_code.co_filename, frame.f_lineno, frame.f_code.co_name))
         return trace
 
@@ -52,7 +67,6 @@ def enable_animation():
         sys.settrace(previous_tracer)
         ANIMATION_CONTEXT.reset(token)
         CURRENT_LINE.set(None)
-        
 
 def is_animating() -> bool:
     """Return True if currently inside an animation context."""
@@ -91,11 +105,30 @@ class AlgoScene(Scene):
     def in_play(self):  # convenience lol
         return self._inside_play_call
 
-    def play(self, *anims, **kwargs): 
-        self.logger.info(anims)
+    def play(self, *animations, sequential: bool = True, **kwargs):
+        """
+        Play one or more animations with optional parallel execution.
+
+        Parameters
+        ----------
+        animations : Animation or LazyAnimation, or iterables
+            Animation or LazyAnimation to play. Non-animation inputs raise TypeError.
+        sequential : bool, optional
+            When True (default), runs resolved animations back-to-back.
+            When False, forwards all resolved animations in a single call so Manim
+            plays them in parallel.
+        kwargs : dict, optional
+            Passed through to Manim/renderer (e.g., run_time, rate_func).
+
+        Notes
+        -----
+        - To play animations in parallel, pass sequential=False.
+        - To play animations sequentially, pass sequential=True.
+        """
+        self.logger.info(animations)
        
         resolved = []
-        for anim in flatten_array(result=[],objs=anims):
+        for anim in flatten_array(result=[],objs=animations):
             if not anim:
                 continue
             anim = anim.build() if isinstance(anim, LazyAnimation) else anim
@@ -104,8 +137,11 @@ class AlgoScene(Scene):
             resolved.append(anim)
         if resolved:
             self.logger.debug("List of animations(inside check): %s", resolved)
-        for anim in resolved:
-            self.player.play(anim, source=None, **kwargs)
+        if sequential:
+            for anim in resolved:
+                self.player.play(anim,**kwargs)
+        else:
+            self.player.play(*resolved,**kwargs)
     
     def register_structure(self, structure: VisualStructure) -> None:
         """Remember a structure so we can find it later."""
@@ -273,12 +309,18 @@ class PlaybackController:
         self.logger = DebugLogger(logger_name=f"{__name__}.PlaybackController")
         self.renderer: OpenGLRenderer | CairoRenderer = scene.renderer
         self.state: PlaybackState = PlaybackState.IDLE
-        
+        self._playback_queue = {}
+        self._playback_timeline = []
+        self.capture_enabled:bool = True
         self._step_time_delta:float = 0.0 #Time difference for n frames stepped
         self._last_t:float = 0.0
-    def capture_data(self):
-        pass
-    def play(self,*anims,capture:bool=True, source=None, **kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
+    def capture_data(self,animation:Animation):
+        line_info = CURRENT_LINE.get()
+        if line_info not in self._playback_queue:
+            self._playback_queue[line_info] = animation
+            self._playback_timeline.append(line_info)
+        
+    def play(self,*animations,capture:bool=True,**kwargs): #Hijacks Scene.play(), set the flag to True if playing and False when finished
         import threading
         import time
         #Some functionality were taken from manim's repo
@@ -379,13 +421,17 @@ class PlaybackController:
             # Closing the progress bar at the end of the play.
             scene.time_progression.close()
         
-        # animations = resolve_animations(animations=anims)
+        # animations = resolve_animations(animations=animations)
         type(self.scene)._inside_play_call = True
         if self.state != PlaybackState.PAUSED: 
             self.state = PlaybackState.PLAYING
-            
+        # if self.capture_enabled:
+        #     self.capture_data(animation=animations)
+        #     self.logger.info("Playback queue: %s",self._playback_queue)
+        #     self.logger.info("Playback timeline: %s",self._playback_timeline)
+        #     return
         self.renderer.animation_start_time = time.time()
-        begin_animations(scene=self.scene, renderer=self.renderer, animations=anims)
+        begin_animations(scene=self.scene, renderer=self.renderer, animations=animations)
         
         if self.scene.is_current_animation_frozen_frame():  # Frozen frame
             render_frozen_frame(self.renderer, self.scene)
