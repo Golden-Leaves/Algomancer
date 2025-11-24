@@ -141,7 +141,7 @@ class VisualArray(VisualStructure,Generic[T]):
         if isinstance(index, Pointer):
             return self.get_element(index.value).value
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
-            self.play([self.highlight(index,runtime=0.2),self.unhighlight(index,runtime=0.2)])
+            self.play([self.highlight(index,runtime=0.4),self.unhighlight(index,runtime=0.3)])
         return self.get_element(index).value
     
     def __setitem__(self, index, value):
@@ -465,9 +465,19 @@ class VisualArray(VisualStructure,Generic[T]):
 
     def create(self, cells: list[Cell] | None = None, runtime: float = 0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
-        def instantiate(raw_data, position):
+        def instantiate(raw_data: list[Any], position: np.ndarray) -> None:
+            """
+            Instantiates the VisualArray from raw data.
+
+            Parameters
+            ----------
+            raw_data : list[Any]
+                A list of values to populate the array with.
+            position : np.ndarray
+                The position of the array in the scene.
+            """
             for text in raw_data:
-                cell = Cell(
+                cell: Cell = Cell(
                     value=text,
                     master=self,
                     cell_width=self.element_width,

@@ -598,30 +598,25 @@ class VisualElement(VGroup):
         return getattr(body, "height", getattr(self, "height", None))
 
     # --- Positioning ---
-    @property
-    def center(self):
+    def get_center(self):
         body = getattr(self, "body", None)
-        return body.get_center() if body is not None else self.get_center()
+        return body.get_center() if body is not None else super().get_center()
 
-    @property
-    def top(self):
+    def get_top(self):
         body = getattr(self, "body", None)
-        return body.get_top() if body is not None else self.get_top()
+        return body.get_top() if body is not None else super().get_top()
 
-    @property
-    def bottom(self):
+    def get_bottom(self):
         body = getattr(self, "body", None)
-        return body.get_bottom() if body is not None else self.get_bottom()
+        return body.get_bottom() if body is not None else super().get_bottom()
 
-    @property
-    def left(self):
+    def get_left(self):
         body = getattr(self, "body", None)
-        return body.get_left() if body is not None else self.get_left()
+        return body.get_left() if body is not None else super().get_left()
 
-    @property
-    def right(self):
+    def get_right(self):
         body = getattr(self, "body", None)
-        return body.get_right() if body is not None else self.get_right()
+        return body.get_right() if body is not None else super().get_right()
 
     # --- Extra geometric points if needed ---
     @property

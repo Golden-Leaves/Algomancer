@@ -5,11 +5,11 @@ from manim import DOWN, LEFT, RIGHT, UP
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from Structures.base import VisualElement
+    from Structures.base import VisualElement,VisualStructure
 
 
 def get_offset_position(
-    element: "VisualElement", coordinate=None, direction: np.ndarray = UP, buff: float = 1
+    element: "VisualElement"|VisualStructure, coordinate=None, direction: np.ndarray = UP, buff: float = 1
 ):
     """
     Return a position offset relative to the given element, staying above/below/
@@ -38,18 +38,20 @@ def get_offset_position(
     - The offset *origin* is `coordinate` (defaults to element center).
     """
     vec = direction
+    element_height = getattr(element,"body_height",element.height)
+    element_width = getattr(element,"body_width",element.width)
     if direction is UP:
-        base = element.top if coordinate is None else np.array(coordinate)
-        scale = element.body_height
+        base = element.get_top() if coordinate is None else np.array(coordinate)
+        scale = element_height
     elif direction is DOWN:
-        base = element.bottom if coordinate is None else np.array(coordinate)
-        scale = element.body_height
+        base = element.get_bottom() if coordinate is None else np.array(coordinate)
+        scale = element_height
     elif direction is LEFT:
-        base = element.left if coordinate is None else np.array(coordinate)
-        scale = element.body_width
+        base = element.get_left() if coordinate is None else np.array(coordinate)
+        scale = element_width
     elif direction is RIGHT:
-        base = element.right if coordinate is None else np.array(coordinate)
-        scale = element.body_width
+        base = element.get_right() if coordinate is None else np.array(coordinate)
+        scale = element_width
     else:
         raise ValueError(f"Invalid direction: {direction}")
 
