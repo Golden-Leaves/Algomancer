@@ -4,6 +4,7 @@ from typing import Any
 from Structures.arrays import Cell
 from Structures.base import VisualStructure,VisualElement
 from Components.animations import LazyAnimation, hop_element, slide_element
+from Components.geometry import get_offset_position
 from Components.logging import DebugLogger
 from Components.runtime import is_animating
 class Entry(VisualElement):
@@ -16,8 +17,6 @@ class Entry(VisualElement):
         Owning structure (typically the `VisualHashTable`) responsible for playback/logging.
     kv_pair : tuple[Any, Any]
         `(key, value)` payload used to initialize the entry's cells.
-    hash : int | None
-        Precomputed bucket index for logging/debugging purposes.
     label : str | None
         Optional label propagated to the underlying `VisualElement`.
     entry_height : int, optional
@@ -27,18 +26,25 @@ class Entry(VisualElement):
     **kwargs :
         Forwarded to the base `VisualElement` constructor (e.g., positioning).
     """
-    def __init__(self, master = None, kv_pair:tuple[Any,Any] = None,hash=None, label = None,
+    def __init__(self, master = None, kv_pair:tuple[Any,Any] = None,label = None,text_color:ManimColor=WHITE,text_size:float = 1.0,
                  entry_height:int=1,entry_width:int=4,**kwargs):
+        from Structures.base import _COMPARE_GUARD
         if kv_pair is None or not isinstance(kv_pair,tuple):
             raise ValueError("kv_pair must be a (key,value) tuple")
         
         self.entry_height = entry_height
         self.entry_width = entry_width
-        self.value_cell:Cell = Cell(value=kv_pair[1],master=master,cell_width=entry_width*0.75,cell_height=entry_height)
-        self.key_cell:Cell = Cell(value=kv_pair[0],master=master,cell_width=entry_width*0.25,cell_height=entry_height)
+        self.value_cell:Cell = Cell(value=kv_pair[1],master=master,cell_width=entry_width*0.75,cell_height=entry_height
+                                    ,text_color=text_color,text_size=text_size)
+        self.key_cell:Cell = Cell(value=kv_pair[0],master=master,cell_width=entry_width*0.25,cell_height=entry_height
+                                  ,text_color=text_color,text_size=text_size)
         self.value_cell.move_to(RIGHT * entry_width*0.25 / 2) #Move center to the right edge of key_cell
         self.key_cell.move_to(LEFT * entry_width*0.75 / 2) #We escape the encompassing value_cell
-        body = VGroup(self.key_cell,self.value_cell)
+        token = _COMPARE_GUARD.set(True)
+        try:
+            body = VGroup(self.key_cell,self.value_cell)
+        finally:
+            _COMPARE_GUARD.set(token)
         body.move_to(ORIGIN) #Moves the body back to origin since the movement shifts it
         super().__init__(body, master, kv_pair, label, **kwargs)
         
@@ -57,8 +63,10 @@ class Entry(VisualElement):
     def key(self,new_key):
         self.key_cell.value = new_key
 
-    def set_value(self,value:Any,color:ManimColor,runtime:float=0.5):
-        return self.value_cell.set_value(value=value,color=color)
+    def set_value(self,value:Any,runtime:float=0.5):
+        """Update the value cell for the entry"""
+        return self.value_cell.set_value(value=value,runtime=runtime,
+                                        text_color=self.text_color,text_size=self.text_size)
     
 class VisualHashTable(VisualStructure):
     """
@@ -74,29 +82,29 @@ class VisualHashTable(VisualStructure):
         Width allocated to each entry (passed down to `Entry`).
     element_height : float, optional
         Height allocated to each entry.
-    text_color : ManimColor, optional
-        Default text colour for value cells unless overridden.
+
     label : str | None, optional
         Optional label used in logs and overlays.
     **kwargs :
         Additional positioning arguments forwarded to `VisualStructure`.
     """
-    def __init__(self,data:dict,scene,element_width=4,element_height=1,text_color=WHITE,label=None,**kwargs):
+    def __init__(self,data:dict,scene,element_width=4,element_height=1,label=None,**kwargs):
         self.logger = DebugLogger(logger_name=__name__, output=False)
         super().__init__(scene,label,**kwargs)
         self._raw_data = data
         self._bucket_count = max(1,len(data)) #Division by 0...
-        self.text_color = text_color
         self.element_width = element_width
         self.element_height = element_height
-        self.text_color = WHITE
         self.entries:dict[Any,Entry] = {} #Normal keys, self.elements stores by buckets(hashed key)
-        self._instantialized = False
+        self._instantiated = False
         
     def __len__(self):
         return len(self.entries)
 
     def _hash_key(self,key):
+        """
+        Hashes a key into a bucket index.\n
+        Used for deterministic placement of entries in `self.elements`."""
         if isinstance(key,int):
             raw = key
         else:
@@ -106,6 +114,16 @@ class VisualHashTable(VisualStructure):
     def _get_entry(self, key: Any) -> Entry:
         """
         Retrieve the Entry associated with ``key`` while enforcing hash-table specific errors.
+
+        Parameters
+        ----------
+        key : Any
+            The key to retrieve the associated Entry for.
+
+        Returns
+        -------
+        Entry
+            The Entry associated with the key.
 
         Raises
         ------
@@ -122,91 +140,75 @@ class VisualHashTable(VisualStructure):
         if entry is None or slot is None:
             raise KeyError(f"Key {key!r} not present in hash table.")
 
-        if slot is not entry:
-            raise KeyError(
-                f"Key {key!r} mapped to bucket {bucket} but visuals are out of sync."
-            )
+        # if slot is not entry:
+        #     raise KeyError(
+        #         f"Key {key!r} mapped to bucket {bucket} but visuals are out of sync."
+        #     )
 
         return entry
     
-    def _highlight_entry(self,entry:Entry,color:ManimColor=YELLOW,opacity:float=0.5,runtime:float=0.5) -> AnimationGroup:
+    def _highlight_entry(self,entry:Entry,color:ManimColor=YELLOW,opacity:float=0.5,runtime:float=0.5) -> tuple[ApplyMethod,ApplyMethod]:
         key_cell = super().highlight(element=entry.key_cell,color=color,opacity=opacity,runtime=runtime)
         value_cell = super().highlight(element=entry.value_cell,color=color,opacity=opacity,runtime=runtime)
-        return AnimationGroup(key_cell,value_cell)
+        return (key_cell,value_cell)
     
-    def _unhighlight_entry(self,entry:Entry,runtime:float=0.5) -> AnimationGroup:
+    def _unhighlight_entry(self,entry:Entry,runtime:float=0.5) -> tuple[ApplyMethod,ApplyMethod]:
         key_cell = super().unhighlight(element=entry.key_cell,runtime=runtime)
         value_cell = super().unhighlight(element=entry.value_cell,runtime=runtime)
-        return AnimationGroup(key_cell,value_cell)
+        return (key_cell,value_cell)
     
-    def highlight(self, element:VisualElement|Any, color=YELLOW, opacity=0.5, runtime=0.5) -> ApplyMethod|AnimationGroup:
+    def highlight(self, element:VisualElement|Any, color=YELLOW, opacity=0.5, runtime=0.4) -> ApplyMethod|tuple[ApplyMethod,ApplyMethod]:
         element = self._get_entry(key=element)
         if isinstance(element,Entry):
             return self._highlight_entry(entry=element,color=color,opacity=opacity,runtime=runtime)
-        return super().highlight(element, color, opacity, runtime)
+        return super().highlight(element=element, color=color, opacity=opacity, runtime=runtime)
     
-    def unhighlight(self, element, runtime=0.5) -> ApplyMethod|AnimationGroup:
+    def unhighlight(self, element, runtime=0.3) -> ApplyMethod|tuple[ApplyMethod,ApplyMethod]:
         element = self._get_entry(key=element)
         if isinstance(element,Entry):
             return self._unhighlight_entry(entry=element,runtime=runtime)
-        return super().unhighlight(element, runtime)
+        return super().unhighlight(element=element, runtime=runtime)
     
     
     def __getitem__(self, key):
         entry = self._get_entry(key=key)
         if self.scene and is_animating() and not self.scene.in_play:
-            anims = [
-            super().highlight(element=entry.key_cell, opacity=0.5, runtime=0.3),
-            super().unhighlight(element=entry.key_cell, opacity=0.5, runtime=0.2),
-            super().highlight(element=entry.value_cell, opacity=0.5, runtime=0.3),
-            super().unhighlight(element=entry.value_cell, opacity=0.5, runtime=0.2),
-        ]
-            self.play(Succession(*anims))
+            self.play(self.highlight(element=entry,runtime=0.4))
+            self.play(self.unhighlight(element=entry,runtime=0.3))
         return entry
+    
     def __setitem__(self, key, value):
-        entry = self._get_entry(key=key)
+        try:
+            entry = self._get_entry(key=key)
+        except KeyError as e:
+            self.add_entry(key=key,value=value)
+            return
         self.play(entry.set_value(value=value))
-        if self.scene and is_animating() and not self.scene.in_play:
-            anims = [
-            super().highlight(element=entry.key_cell, opacity=0.5, runtime=0.3),
-            super().unhighlight(element=entry.key_cell, opacity=0.5, runtime=0.2),
-            super().highlight(element=entry.value_cell, opacity=0.5, runtime=0.3),
-            super().unhighlight(element=entry.value_cell, opacity=0.5, runtime=0.2),
-        ]
-            self.play(Succession(*anims))
         
     def pop(self,key:Any|Entry,default=None,runtime=0.5) -> Any:
         keys = list(self.entries)
         mid = len(keys) // 2
-        previous_entries = []
         anims = []
-        popped_entry = None
+        try:
+            popped_entry = self._get_entry(key=key)
+        except KeyError as e:
+            if default is not None:
+                return default
+            raise e
+        self.play(FadeOut(popped_entry))
+        bucket = self._hash_key(key=key)
         
-        for _key in keys:
-            try:
-                entry = self._get_entry(key=_key)
-                if _key == key or entry is key: #Found entry
-                    bucket = self._hash_key(key=key)
-                    popped_entry = entry
-                    anims.append(FadeOut(entry))
-                    break
-                previous_entries.append(entry)
-            except KeyError as e:
-                if default is not None:
-                    return default
-                raise e
-            
         popped_cell_index = keys.index(popped_entry.key)
-        if popped_cell_index <= mid: #Shift rightwards
+        if popped_cell_index <= mid: #Shift upwards
             for idx in range(popped_cell_index - 1,-1,-1):
                 from_key:Entry = self._get_entry(keys[idx])
                 to_key:Entry = self._get_entry(keys[idx + 1])
-                anims.append(slide_element(element=from_key,target_pos=to_key.center))
-        else: #Shift leftwards
+                anims.append(slide_element(element=from_key,target_pos=to_key.get_center(),align="y"))
+        else: #Shift downwards
             for idx in range(popped_cell_index + 1,len(keys)):
                 from_key:Entry = self._get_entry(keys[idx])
                 to_key:Entry = self._get_entry(keys[idx - 1])
-                anims.append(slide_element(element=from_key,target_pos=to_key.center))
+                anims.append(slide_element(element=from_key,target_pos=to_key.get_center(),align="y"))
         
         if self.scene and is_animating() and not self.scene.in_play:
             self.play(*anims,runtime=runtime)    
@@ -223,8 +225,7 @@ class VisualHashTable(VisualStructure):
 
         def build():
             entry = self._get_entry(key)
-            transform = entry.value_cell.set_value(value, color=self.text_color)
-            entry.value = entry.value_cell.value
+            transform = entry.set_value(value=value)
 
             self.logger.debug("hash_table.set_value key=%s value=%s", key, entry.value)
             return transform
@@ -236,34 +237,101 @@ class VisualHashTable(VisualStructure):
     
     
     
+    def add_entry(self, key: Any, value: Any, recenter: bool = False) -> None:
+        """Adds an entry to the hash table.
+
+        Parameters
+        ----------
+        key : Any
+            The key for the entry.
+        value : Any
+            The value for the entry.
+        recenter : bool, optional
+            Whether to recenter the hash table after adding the entry.
+
+        Returns
+        -------
+        None
+        """
+        if not self._instantiated:
+            self.create()
+        before_move = self.get_center()
+        key = key.value if isinstance(key,VisualElement) else key
+        value = value.value if isinstance(value,VisualElement) else value
+        entry = Entry(kv_pair=(key,value),scene=self.scene,entry_width=self.element_width,entry_height=self.element_height,
+                      text_color=self.text_color,text_size=self.text_size)
+        bucket = self._hash_key(key=key)
+        last_entry = self.elements[-1] if self.elements else entry
+        if self.elements:
+            entry_position = get_offset_position(element=last_entry,direction=DOWN,buff=0.5)
+        else:
+            entry_position = self.pos
+        entry.move_to(entry_position)
+        self.add(entry)
+        self.entries[key] = entry
+        self.elements[bucket] = entry
+        self.play(self.create(entries=[entry]))
+        
+        if recenter:
+            self.move_to(before_move)
+        return
+        
     
-    
-    def create(self,entries:list[Entry]=None,runtime:float=0.5):
-        if not self._instantialized:  #instantiate cell geometry without animation
+    def create(self, entries: list[Entry] = None, runtime: float = 0.5) -> AnimationGroup:
+        """
+        Creates and returns animations for entries
+        Parameters
+        ----------
+        entries : list[Entry], optional
+            A list of Entry objects to populate the hash table with.
+        runtime : float, optional
+            The duration of the instantiation animation in seconds.
+
+        Returns
+        -------
+        AnimationGroup
+            The animation group containing the instantiation animation.
+        """
+        def instantiate(raw_data: dict[Any, Any],position: np.ndarray) -> None:
+            """
+            Instantiates the VisualHashTable from raw data.
+            """
             self.elements =  [None] * self._bucket_count #Prefill stuff first so the hashed key does not go out-of-bounds
             anchor = np.array(self.get_center())
             if not np.allclose(anchor, 0):
                 self.pos = anchor
-            for key,data in self._raw_data.items():
+            for key, data in raw_data.items():
                 hashed_key = self._hash_key(key=key)
-                entry = Entry(master=self,kv_pair=(key,data),hash=hashed_key,label=self.label)
+                entry = Entry(
+                    master=self,
+                    kv_pair=(key, data),
+                    hash=hashed_key,
+                    label=self.label,
+                    text_color=self.text_color,
+                    text_size=self.text_size,
+                    entry_width=self.element_width,
+                    entry_height=self.element_height
+                )
                 self.entries[key] = entry
                 self.elements[hashed_key] = entry
                 self.add(entry)
                 
-            self.arrange(DOWN,buff=0.6) #Magic number
+
+            element_height = float(self.element_height)
+            center_shift = (len(self.elements) - 1) / 2
+            for idx, entry in enumerate(self.elements):
+                offset = (idx - center_shift) * element_height #Distribute cells evenly based on a center point
+                entry.move_to(position + DOWN * offset)
+                
             first_entry = next(iter(self.entries.values()), None)
             if first_entry is not None:
                 self.align_to(first_entry, LEFT)
             self.move_to(self.pos)
-            self.set_opacity(0)
-            self._instantialized = True
-        
-        if not self.scene:
-            return None
-        
-        self.pos = np.array(self.get_center())
-        self.set_opacity(1)
+            self._instantiated = True
+            
+        if not self._instantiated:
+            instantiate(raw_data=self._raw_data,position=self.pos)
+    
         runtime = max(0.5,runtime)
         
         if entries is None:
