@@ -29,7 +29,9 @@ class VisualStructure(VGroup):
         Additional positioning options that mirror Manim's ``VGroup`` constructor
         (e.g. ``pos`` or ``x``/``y``/``z`` coordinates).
     """
-    def __init__(self, scene: AlgoScene, label: str, **kwargs):
+    def __init__(self, scene: AlgoScene, label: str ,text_size:float = 1.0,text_color:ManimColor=WHITE, **kwargs):
+        self.text_size = text_size
+        self.text_color = text_color
         self._position = kwargs.pop("start_pos", None)
         if self._position is not None:
             self._position = np.array(self._position, dtype=float)
@@ -108,7 +110,7 @@ class VisualStructure(VGroup):
         return self.effects.unoutline(element, color=color, width=width, runtime=runtime)
 
         
-    def play(self, *anims, **kwargs):
+    def play(self, *anims, sequential:bool=True, **kwargs):
         """Recursive play: handles single or multiple animations\n
         Can accept either an array or multiple comma-seperated animations
         """
@@ -118,7 +120,7 @@ class VisualStructure(VGroup):
             logger.warning("No Scene bound. Pass scene=... when creating %s.",self)
             raise RuntimeError("No Scene bound. Pass scene=... when creating VisualStructure.")
        
-        scene.play(*anims,**kwargs)
+        scene.play(*anims,sequential=sequential,**kwargs)
         for element in self.elements: 
             if element.master is not self: #OpenGL mobjects can lose the master ref for some reason
                 element.master = self
@@ -255,11 +257,14 @@ class VisualElement(VGroup):
     - ``body`` is appended to the group in ``__init__`` so additional adornments
       (text, highlight rings, etc.) can be added via ``self.add(...)``.
     """
-    def __init__(self, body: VMobject=None,master:VisualStructure=None,value:Any=None,label:str=None,**kwargs):
+    def __init__(self, body: VMobject=None, master:VisualStructure=None, value:Any=None, label:str=None,
+                 text_color:ManimColor=WHITE, text_size:float = 1.0,
+                 **kwargs):
+        self.text_color = text_color
+        self.text_size = text_size
         self._position = kwargs.pop("start_pos",None)
         if self._position is not None:
             self._position = np.array(self._position)
-        
         else:
             x = kwargs.get("x",None)
             y = kwargs.get("y",None)

@@ -12,10 +12,40 @@ BRIGHT_GREEN = "#00FF00"
 T = TypeVar("T")
     
 class Cell(VisualElement):
-    """Visual representation of a single array slot with body + text managed together."""
-    def __init__(self, value:Any,master:VisualStructure,
-                cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE,rounded=False,border=True,**kwargs):
+    """
+        A Cell, a rectangle and a fundamental visual building-block.
 
+        Parameters
+        ----------
+        value : Any
+            The value represented by the cell.
+        master : VisualStructure
+            Owning structure (typically the `VisualArray`) responsible for playback/logging.
+        cell_width : int, optional
+            Width for the cell.
+        cell_height : int, optional
+            Height for the cell.
+        text_color : ManimColor, optional
+            Color of the rendered text.
+        text_size : float, optional
+            Scales the rendered text relative to its original size.
+        rounded : bool, optional
+            If True, the cell will be rendered with rounded corners.
+        border : bool, optional
+            If False, the cell will not have a border.
+        **kwargs :
+            Additional positioning arguments.
+
+        Notes
+        -----
+        - The cell is rendered with a black background and white text by default.
+        - The cell's text is centered within the cell's body.
+        """
+
+    def __init__(self, value:Any,master:VisualStructure,
+                cell_width:int=1, cell_height:int=1, text_color:ManimColor=WHITE, text_size:float=1.0,
+                rounded=False,border=True,
+                **kwargs):
         self.rounded = rounded
         corner_radius = 0.3 if rounded else 0
         self.body = (RoundedRectangle(width=cell_width, height=cell_height, corner_radius=corner_radius) if rounded else 
@@ -28,10 +58,10 @@ class Cell(VisualElement):
 
         
         self.text = MathTex(value).set_color(text_color)
-        pad_w = 0.70 
-        pad_h = 0.85 
-        text_scale = min(pad_w * (cell_width / self.text.height), pad_h * (cell_width / self.text.width)) #pad * old_ratio = new_ratio
-        self.text.scale(text_scale)
+        pad_w = 0.75 
+        pad_h = 0.75
+        text_scale = min(pad_w * (cell_width / self.text.height), pad_h * (cell_height / self.text.width)) #pad * old_ratio = new_ratio
+        self.text.scale(text_scale * text_size)
         self._base_text_color = text_color
         self.text.move_to(self.body.get_center())
         self.text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
@@ -44,14 +74,15 @@ class Cell(VisualElement):
     def create(self,runtime:float=0.5) -> AnimationGroup:
         return AnimationGroup(Create(self.body),Write(self.text),lag_ratio=runtime)
 
-    def set_value(self, value: Any, *, color: ManimColor | None = None, runtime: float = 0.5) -> Transform:
+    def set_value(self, value: Any, *, text_color:ManimColor,text_size:float, runtime: float = 0.5) -> Transform:
         """Update the cell's stored value and return the corresponding text transform."""
         resolved = value.value if hasattr(value, "value") else value
-        text_color = color or self._base_text_color
-        pad_w = 0.85 
-        pad_h = 0.85 
-        text_scale = min(pad_w * (self._cell_height / self.text.height), pad_h * (self._cell_width / self.text.width)) #pad * old_ratio = new_ratio
-        new_text = MathTex(resolved).set_color(text_color).scale(text_scale)
+        text_color = text_color or self.text_color
+        text_size = text_size or self.text_size
+        pad_w = 0.75 
+        pad_h = 0.75 
+        text_scale = min(pad_w * (self._cell_width / self.text.width), pad_h * (self._cell_height / self.text.height)) #pad * old_ratio = new_ratio
+        new_text = MathTex(resolved).set_color(text_color).scale(text_scale * self.text_size)
         new_text.move_to(self.body.get_center())
         new_text.add_updater(lambda m, body=self.body: m.move_to(body.get_center()))
         self.value = resolved
@@ -81,9 +112,8 @@ class Cell(VisualElement):
                 pass
             clone.text.add_updater(lambda m, body=clone.body: m.move_to(body.get_center()))
         return clone
-    
 class VisualArray(VisualStructure,Generic[T]):
-    def __init__(self,data:Any,scene:AlgoScene=None,element_width:int=1,element_height:int=1,text_color:ManimColor=WHITE,
+    def __init__(self,data:Any,scene:AlgoScene=None,element_width:int=1,element_height:int=1,
                 label:str=None,
                 **kwargs):
         """
@@ -116,7 +146,6 @@ class VisualArray(VisualStructure,Generic[T]):
         self.border = kwargs.pop("border",True)
         super().__init__(scene,label,**kwargs)
         self.rounded = kwargs.pop("rounded",False)
-        self.text_color = text_color
         self.element_width = element_width
         self.element_height = element_height
         self._instantiated = False
@@ -141,14 +170,15 @@ class VisualArray(VisualStructure,Generic[T]):
         if isinstance(index, Pointer):
             return self.get_element(index.value).value
         if self.scene and is_animating() and not self.scene.in_play:#Dunders should only execute if a scene is passed(otherwise only log)
-            self.play([self.highlight(index,runtime=0.4),self.unhighlight(index,runtime=0.3)])
+            #A weird text dimming bug will occur if we use Succession or AnimationGroup
+            self.play([self.highlight(index,runtime=0.4),self.unhighlight(index,runtime=0.3)]) 
         return self.get_element(index).value
     
     def __setitem__(self, index, value):
         if self.scene and is_animating() and not self.scene.in_play:
             self.play(self.set_value(index=index,value=value))
         return 
-    
+        
     def __contains__(self,value):
         result = False
         target_val = value.value if hasattr(value, "value") else value
@@ -202,7 +232,7 @@ class VisualArray(VisualStructure,Generic[T]):
         Only updates visuals to reflect the new order.
         """
         if self.scene and is_animating() and not self.scene.in_play:
-            slots = [element.center for element in self.elements] #Snap shot the current positions of each index
+            slots = [element.get_center() for element in self.elements] #Snap shot the current positions of each index
             self.elements.sort(key= lambda el: el.value, reverse=reverse)
             for i, elem in enumerate(self.elements):
 
@@ -248,13 +278,13 @@ class VisualArray(VisualStructure,Generic[T]):
             anims = []
             step = -1 if from_idx > to_idx else 1 #If from_idx is larger than to_idx then shift right else shift left
             
-            destination = self.get_element(to_idx).center
+            destination = self.get_element(to_idx).get_center()
             key:Cell = self.get_element(from_idx)
             anims.append(hop_element(element=key))
             for i in range(from_idx + step,to_idx + step,step):
                 cell:Cell = self.elements[i]
                 prev:Cell = self.elements[i - step]
-                anims.append(slide_element(element=cell,target_pos=prev.center))
+                anims.append(slide_element(element=cell,target_pos=prev.get_center()))
                 
             anims.append(slide_element(element=key,target_pos=destination))
             anims.append(ApplyMethod(key.move_to, destination, run_time=0.3))
@@ -277,7 +307,7 @@ class VisualArray(VisualStructure,Generic[T]):
     def move_cell(self, cell: int | Cell, target_position: np.ndarray, runtime: float = 1.0, direction = UP) -> Succession:
         """Moves specified cell to desired position"""
         cell_element = self.get_element(cell)
-        start_position = np.array(cell_element.center, dtype=float).copy()
+        start_position = np.array(cell_element.get_center(), dtype=float).copy()
         target_position = np.array(target_position, dtype=float).copy()
 
         hop_position = get_offset_position(element=cell_element, direction=direction)
@@ -348,6 +378,8 @@ class VisualArray(VisualStructure,Generic[T]):
             cell_width=self.element_width,
             cell_height=self.element_height,
             border=self.border,
+            text_color=self.text_color,
+            text_size=self.text_size,
         )
 
         last_cell:Cell = self.elements[-1] if self.elements else cell
@@ -413,17 +445,18 @@ class VisualArray(VisualStructure,Generic[T]):
             for i in range(index - 1,-1,-1): #Shift cells to the right to fill up the popped cell
                 cell:Cell = self.elements[i]
                 prev:Cell = self.elements[i + 1]
-                anims.append(slide_element(element=cell,target_pos=prev.center))
+                anims.append(slide_element(element=cell,target_pos=prev.get_center()))
         else:
             for i in range(index + 1,len(self.elements)): #Shift cells to the left to fill up the popped cell
                 cell:Cell = self.elements[i]
                 prev:Cell = self.elements[i - 1]
-                anims.append(slide_element(element=cell,target_pos=prev.center))
+                anims.append(slide_element(element=cell,target_pos=prev.get_center()))
        
             
         self.play(*anims,runtime=runtime)    
         self.elements.pop(index)
         self.remove(popped_cell)
+        popped_cell.become(VGroup())
         self.logger.debug("array.pop index=%s -> len=%d", index, len(self.elements))
         
         return popped_cell.value
@@ -445,8 +478,8 @@ class VisualArray(VisualStructure,Generic[T]):
         idx_1 = cell_1.master.get_index(cell_1) if isinstance(idx_1, VisualElement) else idx_1
         idx_2 = cell_2.master.get_index(cell_2) if isinstance(idx_2, VisualElement) else idx_2
 
-        pos_1 = np.array(cell_1.center, dtype=float).copy()
-        pos_2 = np.array(cell_2.center, dtype=float).copy()
+        pos_1 = np.array(cell_1.get_center(), dtype=float).copy()
+        pos_2 = np.array(cell_2.get_center(), dtype=float).copy()
 
         move_1 = self.move_cell(cell_1, target_position=pos_2.copy(), runtime=runtime)
         move_2 = self.move_cell(cell_2, target_position=pos_1.copy(), runtime=runtime)
@@ -482,9 +515,10 @@ class VisualArray(VisualStructure,Generic[T]):
                     master=self,
                     cell_width=self.element_width,
                     cell_height=self.element_height,
-                    text_color=self.text_color,
                     rounded=self.rounded,
                     border=self.border,
+                    text_color=self.text_color,
+                    text_size=self.text_size
                 )
                 self.add(cell)
                 self.elements.append(cell)
