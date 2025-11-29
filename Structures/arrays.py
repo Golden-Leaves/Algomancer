@@ -340,10 +340,10 @@ class VisualArray(VisualStructure,Generic[T]):
             cell_shifts = []
             for i, element in enumerate(self.elements):
                 center_shift = (len(self.elements)-1)/2
-                cell_target_position = [target_position[0] + (i - center_shift),target_position[1],target_position[2]]
+                cell_target_position = [target_position[0] + (i - center_shift),target_position[1],target_position[2]] #relative position perserved
                 cell_shift = ApplyMethod(element.move_to, cell_target_position,run_time=run_time)
                 cell_shifts.append(cell_shift)
-            self.play(cell_shifts)
+            self.play(cell_shifts,sequential=False)
         finally:
             _COMPARE_GUARD.set(token)
     
@@ -370,8 +370,6 @@ class VisualArray(VisualStructure,Generic[T]):
         before_move = self.get_center()
         if not self._instantiated:
             self.play(self.create())
-        if isinstance(data,VisualElement):
-            data:VisualElement = data.value
         cell = Cell(
             value=data,
             master=self,
@@ -485,17 +483,14 @@ class VisualArray(VisualStructure,Generic[T]):
         move_2 = self.move_cell(cell_2, target_position=pos_1.copy(), runtime=runtime)
 
         finalize = Wait(0)
-
-        def _finish_swap():
-            finalize.finish()
+        original_finish = finalize.finish
+        def _finish_swap():      
+            original_finish()
             self.elements[idx_1], self.elements[idx_2] = self.elements[idx_2], self.elements[idx_1]
-
         finalize.finish = _finish_swap
 
         return Succession(move_1, move_2, finalize, runtime=runtime)
     
-
-
     def create(self, cells: list[Cell] | None = None, runtime: float = 0.5) -> AnimationGroup:
         """Creates the Cell object or index passed, defaults to creating the entire array"""
         def instantiate(raw_data: list[Any], position: np.ndarray) -> None:
