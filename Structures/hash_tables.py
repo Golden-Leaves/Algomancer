@@ -1,3 +1,4 @@
+from __future__ import annotations
 from manim import *
 import numpy as np
 from typing import Any
@@ -26,12 +27,13 @@ class Entry(VisualElement):
     **kwargs :
         Forwarded to the base `VisualElement` constructor (e.g., positioning).
     """
-    def __init__(self, master = None, kv_pair:tuple[Any,Any] = None,label = None,text_color:ManimColor=WHITE,text_size:float = 1.0,
-                 entry_height:int=1,entry_width:int=4,**kwargs):
+    def __init__(self, master:VisualHashTable = None, kv_pair:tuple[Any,Any] = None,label = None, bucket:int = None,
+                text_color:ManimColor=WHITE,text_size:float = 1.0,
+                entry_height:int=1,entry_width:int=4,**kwargs):
         from Structures.base import _COMPARE_GUARD
         if kv_pair is None or not isinstance(kv_pair,tuple):
             raise ValueError("kv_pair must be a (key,value) tuple")
-        
+        bucket = bucket if bucket else master._hash_key(key=kv_pair[0])
         self.entry_height = entry_height
         self.entry_width = entry_width
         self.value_cell:Cell = Cell(value=kv_pair[1],master=master,cell_width=entry_width*0.75,cell_height=entry_height
@@ -139,12 +141,6 @@ class VisualHashTable(VisualStructure):
 
         if entry is None or slot is None:
             raise KeyError(f"Key {key!r} not present in hash table.")
-
-        # if slot is not entry:
-        #     raise KeyError(
-        #         f"Key {key!r} mapped to bucket {bucket} but visuals are out of sync."
-        #     )
-
         return entry
     
     def _highlight_entry(self,entry:Entry,color:ManimColor=YELLOW,opacity:float=0.5,runtime:float=0.5) -> tuple[ApplyMethod,ApplyMethod]:
@@ -184,6 +180,17 @@ class VisualHashTable(VisualStructure):
             self.add_entry(key=key,value=value)
             return
         self.play(entry.set_value(value=value))
+        
+    def move_to(self,target_position,runtime:float=0.5):
+        from Structures.base import _COMPARE_GUARD
+        token = _COMPARE_GUARD.set(True)
+        try:
+            center_shift = (len(self.elements) - 1) / 2
+            for key,value in self.entries.items():#TODO: 
+                entry_target_position = [target_position[0],target_position[1],target_position[2]] 
+                
+        finally:
+            _COMPARE_GUARD.set(token)
         
     def pop(self,key:Any|Entry,default=None,runtime=0.5) -> Any:
         keys = list(self.entries)
@@ -258,9 +265,9 @@ class VisualHashTable(VisualStructure):
         before_move = self.get_center()
         key = key.value if isinstance(key,VisualElement) else key
         value = value.value if isinstance(value,VisualElement) else value
-        entry = Entry(kv_pair=(key,value),scene=self.scene,entry_width=self.element_width,entry_height=self.element_height,
-                      text_color=self.text_color,text_size=self.text_size)
         bucket = self._hash_key(key=key)
+        entry = Entry(kv_pair=(key,value),scene=self.scene,bucket=bucket,entry_width=self.element_width,entry_height=self.element_height,
+                      text_color=self.text_color,text_size=self.text_size)
         last_entry = self.elements[-1] if self.elements else entry
         if self.elements:
             entry_position = get_offset_position(element=last_entry,direction=DOWN,buff=0.5)
@@ -301,11 +308,11 @@ class VisualHashTable(VisualStructure):
             if not np.allclose(anchor, 0):
                 self.pos = anchor
             for key, data in raw_data.items():
-                hashed_key = self._hash_key(key=key)
+                bucket = self._hash_key(key=key)
                 entry = Entry(
                     master=self,
                     kv_pair=(key, data),
-                    hash=hashed_key,
+                    bucket=bucket,
                     label=self.label,
                     text_color=self.text_color,
                     text_size=self.text_size,
@@ -313,7 +320,7 @@ class VisualHashTable(VisualStructure):
                     entry_height=self.element_height
                 )
                 self.entries[key] = entry
-                self.elements[hashed_key] = entry
+                self.elements[bucket] = entry
                 self.add(entry)
                 
 
