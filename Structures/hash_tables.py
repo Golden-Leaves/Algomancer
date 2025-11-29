@@ -33,7 +33,7 @@ class Entry(VisualElement):
         from Structures.base import _COMPARE_GUARD
         if kv_pair is None or not isinstance(kv_pair,tuple):
             raise ValueError("kv_pair must be a (key,value) tuple")
-        bucket = bucket if bucket else master._hash_key(key=kv_pair[0])
+        self.bucket = bucket if bucket else master._hash_key(key=kv_pair[0])
         self.entry_height = entry_height
         self.entry_width = entry_width
         self.value_cell:Cell = Cell(value=kv_pair[1],master=master,cell_width=entry_width*0.75,cell_height=entry_height
@@ -69,6 +69,26 @@ class Entry(VisualElement):
         """Update the value cell for the entry"""
         return self.value_cell.set_value(value=value,runtime=runtime,
                                         text_color=self.text_color,text_size=self.text_size)
+    def move_to(self,target_position:np.ndarray,runtime:float=0.5) -> tuple[ApplyMethod,ApplyMethod]:
+        """Moves the entry to the desired position.
+
+        Parameters
+        ----------
+        target_position : np.ndarray
+            Desired position for the center of the entry.
+        runtime : float, optional
+            Duration of the animation.
+
+        Notes
+        -----
+        - The key cell and value cell will be moved to the desired position.
+        - The key cell will be centered at the left edge of the value cell.
+        """
+        key_target_position = [target_position[0] + (LEFT[0] * self.entry_width*0.25 / 2),target_position[1],target_position[2]]
+        value_target_position = [target_position[0] + (RIGHT[0] * self.entry_width*0.75 / 2),target_position[1],target_position[2]]
+        key_anim = ApplyMethod(self.key_cell.move_to,key_target_position,run_time=runtime)
+        value_anim = ApplyMethod(self.value_cell.move_to,value_target_position,run_time=runtime)
+        return key_anim,value_anim
     
 class VisualHashTable(VisualStructure):
     """
@@ -102,7 +122,25 @@ class VisualHashTable(VisualStructure):
         
     def __len__(self):
         return len(self.entries)
+    def sort_entries_top_to_bottom(self, entries: list[Entry] = None) -> list[Entry]:
+        """
+        Sorts entries in descending order of their y-coordinate(top first).
 
+        Parameters
+        ----------
+        entries : list[Entry], optional
+            List of Entry objects to sort. Defaults to self.elements.
+
+        Returns
+        -------
+        list[Entry]
+            The sorted list of Entry objects.
+        """
+        if entries is None:
+            entries = self.elements
+        elements = [entry for entry in entries if entry]
+        return list(sorted(elements, key=lambda element: element.get_center()[1], reverse=True))
+    
     def _hash_key(self,key):
         """
         Hashes a key into a bucket index.\n
@@ -181,13 +219,19 @@ class VisualHashTable(VisualStructure):
             return
         self.play(entry.set_value(value=value))
         
-    def move_to(self,target_position,runtime:float=0.5):
+    def move_to(self,target_position,runtime:float=0.5) -> None:
         from Structures.base import _COMPARE_GUARD
         token = _COMPARE_GUARD.set(True)
         try:
             center_shift = (len(self.elements) - 1) / 2
-            for key,value in self.entries.items():#TODO: 
-                entry_target_position = [target_position[0],target_position[1],target_position[2]] 
+            anims = []
+            entries = self.sort_entries_top_to_bottom()
+            self.logger.debug("Sorted Entries: %s",entries)
+            for i,entry in enumerate(entries):#TODO: 
+                entry_target_position = [target_position[0],target_position[1] + (i - center_shift),target_position[2]] 
+                entry_shift = entry.move_to(target_position=entry_target_position,runtime=runtime)
+                anims.append(entry_shift)
+            self.play(anims,sequential=False)
                 
         finally:
             _COMPARE_GUARD.set(token)
@@ -266,19 +310,19 @@ class VisualHashTable(VisualStructure):
         key = key.value if isinstance(key,VisualElement) else key
         value = value.value if isinstance(value,VisualElement) else value
         bucket = self._hash_key(key=key)
-        entry = Entry(kv_pair=(key,value),scene=self.scene,bucket=bucket,entry_width=self.element_width,entry_height=self.element_height,
+        entry = Entry(master=self,kv_pair=(key,value),scene=self.scene,bucket=bucket,entry_width=self.element_width,entry_height=self.element_height,
                       text_color=self.text_color,text_size=self.text_size)
         last_entry = self.elements[-1] if self.elements else entry
         if self.elements:
             entry_position = get_offset_position(element=last_entry,direction=DOWN,buff=0.5)
         else:
             entry_position = self.pos
-        entry.move_to(entry_position)
+        super(VisualElement,entry).move_to(entry_position)
         self.add(entry)
         self.entries[key] = entry
         self.elements[bucket] = entry
         self.play(self.create(entries=[entry]))
-        
+        self.logger.debug("self.elements after add_entry(): %s",self.elements)
         if recenter:
             self.move_to(before_move)
         return
@@ -328,12 +372,12 @@ class VisualHashTable(VisualStructure):
             center_shift = (len(self.elements) - 1) / 2
             for idx, entry in enumerate(self.elements):
                 offset = (idx - center_shift) * element_height #Distribute cells evenly based on a center point
-                entry.move_to(position + DOWN * offset)
+                super(VisualElement,entry).move_to(position + DOWN * offset)
                 
             first_entry = next(iter(self.entries.values()), None)
             if first_entry is not None:
                 self.align_to(first_entry, LEFT)
-            self.move_to(self.pos)
+            super(VisualStructure,self).move_to(self.pos)
             self._instantiated = True
             
         if not self._instantiated:
