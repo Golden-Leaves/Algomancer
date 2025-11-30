@@ -89,28 +89,27 @@ class Entry(VisualElement):
         key_anim = ApplyMethod(self.key_cell.move_to,key_target_position,run_time=runtime)
         value_anim = ApplyMethod(self.value_cell.move_to,value_target_position,run_time=runtime)
         return key_anim,value_anim
-    
+
 class VisualHashTable(VisualStructure):
     """
     Visual representation of a dictionary that lays out entries by hashed bucket.
-
-    Parameters
-    ----------
-    data : dict
-        Initial key/value pairs to realize in the table.
-    scene : AlgoScene
-        Scene responsible for rendering and animation playback.
-    element_width : float, optional
-        Width allocated to each entry (passed down to `Entry`).
-    element_height : float, optional
-        Height allocated to each entry.
-
-    label : str | None, optional
-        Optional label used in logs and overlays.
-    **kwargs :
-        Additional positioning arguments forwarded to `VisualStructure`.
     """
     def __init__(self,data:dict,scene,element_width=4,element_height=1,label=None,**kwargs):
+        """Parameters
+        ----------
+        data : dict
+            Initial key/value pairs to realize in the table.
+        scene : AlgoScene
+            Scene responsible for rendering and animation playback.
+        element_width : float, optional
+            Width allocated to each entry.
+        element_height : float, optional
+            Height allocated to each entry.
+        label : str | None, optional
+            Optional label used in logs and overlays.
+        **kwargs :
+            Additional positioning arguments forwarded to `VisualStructure`.
+        """
         self.logger = DebugLogger(logger_name=__name__, output=False)
         super().__init__(scene,label,**kwargs)
         self._raw_data = data
@@ -131,12 +130,6 @@ class VisualHashTable(VisualStructure):
         ----------
         new_bucket_count : int
             The new number of buckets to rehash the entries into.
-
-        Notes
-        -----
-        - The entries are rehashed into their new buckets.
-        - The self.elements list is updated to reflect the new buckets.
-        - The self.entries dictionary is updated to reflect the new buckets.
         """
         items = list(self.entries.items())
         self.elements = [None] * new_bucket_count
@@ -166,7 +159,7 @@ class VisualHashTable(VisualStructure):
         if entries is None:
             entries = self.elements
         elements = [entry for entry in entries if entry]
-        return list(sorted(elements, key=lambda element: element.get_center()[1], reverse=True))
+        return list(sorted(elements, key=lambda element: element.get_center()[1]))
     
     def _hash_key(self,key):
         """
