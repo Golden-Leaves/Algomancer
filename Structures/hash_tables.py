@@ -122,6 +122,33 @@ class VisualHashTable(VisualStructure):
         
     def __len__(self):
         return len(self.entries)
+    
+    def _rehash(self,new_bucket_count:int) -> None:
+        """
+        Rehashes all entries into a new set of buckets.
+
+        Parameters
+        ----------
+        new_bucket_count : int
+            The new number of buckets to rehash the entries into.
+
+        Notes
+        -----
+        - The entries are rehashed into their new buckets.
+        - The self.elements list is updated to reflect the new buckets.
+        - The self.entries dictionary is updated to reflect the new buckets.
+        """
+        items = list(self.entries.items())
+        self.elements = [None] * new_bucket_count
+        self._bucket_count = new_bucket_count
+        self.entries = {}
+        for key,value in items:
+            bucket = self._hash_key(key=key)
+            value.bucket = bucket
+            self.elements[bucket] = value
+            self.entries[key] = value
+        return
+    
     def sort_entries_top_to_bottom(self, entries: list[Entry] = None) -> list[Entry]:
         """
         Sorts entries in descending order of their y-coordinate(top first).
@@ -219,7 +246,22 @@ class VisualHashTable(VisualStructure):
             return
         self.play(entry.set_value(value=value))
         
-    def move_to(self,target_position,runtime:float=0.5) -> None:
+    def move_to(self, target_position: np.ndarray, runtime: float = 0.5) -> None:
+        """
+        Moves all entries in the table to the desired position.
+
+        Parameters
+        ----------
+        target_position : np.ndarray
+            The desired position for the center of the table.
+        runtime : float, optional
+            Duration of the animation. Defaults to 0.5.
+
+        Returns
+        -------
+        None
+        """
+        
         from Structures.base import _COMPARE_GUARD
         token = _COMPARE_GUARD.set(True)
         try:
@@ -227,12 +269,11 @@ class VisualHashTable(VisualStructure):
             anims = []
             entries = self.sort_entries_top_to_bottom()
             self.logger.debug("Sorted Entries: %s",entries)
-            for i,entry in enumerate(entries):#TODO: 
+            for i,entry in enumerate(entries):
                 entry_target_position = [target_position[0],target_position[1] + (i - center_shift),target_position[2]] 
                 entry_shift = entry.move_to(target_position=entry_target_position,runtime=runtime)
                 anims.append(entry_shift)
             self.play(anims,sequential=False)
-                
         finally:
             _COMPARE_GUARD.set(token)
         
@@ -310,6 +351,8 @@ class VisualHashTable(VisualStructure):
         key = key.value if isinstance(key,VisualElement) else key
         value = value.value if isinstance(value,VisualElement) else value
         bucket = self._hash_key(key=key)
+        self._rehash(new_bucket_count=self._bucket_count + 1)
+        
         entry = Entry(master=self,kv_pair=(key,value),scene=self.scene,bucket=bucket,entry_width=self.element_width,entry_height=self.element_height,
                       text_color=self.text_color,text_size=self.text_size)
         last_entry = self.elements[-1] if self.elements else entry
