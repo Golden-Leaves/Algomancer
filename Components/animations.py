@@ -35,7 +35,7 @@ def hop_element(
     lift: float = 0.5,
     runtime: float = 0.3,
     direction: np.ndarray = UP,
-) -> Animation:
+) -> ApplyMethod:
     """Return a hop animation for a visual element."""
     from Structures.base import VisualStructure
     from manim import AnimationGroup
@@ -67,8 +67,11 @@ def slide_element(
     target_pos: Sequence[float] | np.ndarray,
     runtime: float = 0.5,
     align: str = "x",
-) -> Animation:
+) -> ApplyMethod:
     """Return a slide animation while preserving vertical alignment."""
+    from Structures.base import VisualStructure
+    from manim import AnimationGroup
+    align = align.lower()
     current = element.get_center()
     goal = np.asarray(target_pos, dtype=float)
     if align == "x":  # Preserve the current y/z coordinates.

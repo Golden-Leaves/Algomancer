@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from Components.config import DEFAULT_CONFIG as CFG
 from Components.logging import DebugLogger
 from Components.runtime import AlgoScene,AlgoSlide
+import Components.runtime as runtime
 QUALITY_MAP = {
     "low": "l",      # -ql
     "medium": "m",   # -qm
@@ -55,6 +56,7 @@ def render_scene(
     list[str]
         Names of rendered scenes in order.
     """
+    runtime.ACTIVE_SCRIPT = str(Path(file).resolve())
     logger = DebugLogger(logger_name=__name__, output=True)
     cfg = CFG 
     quality = (quality or cfg.render.quality).lower()
@@ -66,18 +68,16 @@ def render_scene(
     renderer = (renderer or cfg.render.renderer_str).lower()
     write_to_file = False if write_to_file is None else write_to_file
     fps = fps or cfg.playback.frame_rate
-    logger.debug("Is slides True?: %s",slides)
     file = os.path.basename(os.path.abspath(file))
     if not isinstance(scenes, list):
         scenes = [scenes]
-        
+    
     def write_scenes(scenes: list[AlgoScene | AlgoSlide], cmd: list[str]) -> list[str]:
         """Appends each scene's class name to `cmd` and runs it. When in slides mode,
         exits early if a matching slides JSON already exists to avoid re-rendering.
         """
         outputs = []
         for scene in scenes: #rendering
-            logger.debug("Slides path: %s",os.path.join("slides",scene.__name__,".json"))
             slides_exist = os.path.exists(os.path.join("slides",f"{scene.__name__}.json")) #Slides path
             if slides and slides_exist and not force: 
                 return
@@ -99,7 +99,6 @@ def render_scene(
         flag_image = "-s" if image else ""
         flag_renderer = f"--renderer={renderer}" if renderer else ""
         flag_write_to_movie = "--write_to_movie" if renderer == "opengl" and write_to_file else ""#OpenGL does not automatically write a file
-        logger.debug("Write to movie?: %s",flag_write_to_movie)
         flag_file_path = str(Path(file).resolve())
         flag_fps = f"--fps={fps}"
         

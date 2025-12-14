@@ -161,11 +161,22 @@ class VisualHashTable(VisualStructure):
         elements = [entry for entry in entries if entry]
         return list(sorted(elements, key=lambda element: element.get_center()[1]))
     
-    def _hash_key(self,key):
+    def _hash_key(self, key: Any) -> int:
         """
         Hashes a key into a bucket index.\n
-        Used for deterministic placement of entries in `self.elements`."""
-        if isinstance(key,int):
+        Used for deterministic placement of entries in `self.elements`.
+
+        Parameters
+        ----------
+        key : Any
+            The key to hash.
+
+        Returns
+        -------
+        int
+            The bucket index associated with the key.
+        """
+        if isinstance(key, int):
             raw = key
         else:
             raw = sum(ord(char) for char in str(key))
@@ -190,13 +201,17 @@ class VisualHashTable(VisualStructure):
         KeyError
             If the key is not present or the bucket's visuals are out of sync.
         """
+        if isinstance(key,Entry):
+            return key
+        self.logger.debug("Key: %s", key)
+        self.logger.debug("Key type: %s", type(key))
         bucket = self._hash_key(key)
         entry = self.entries.get(key, None)
         try:
             slot = self.get_element(bucket)
         except (IndexError, TypeError, ValueError) as exc:
             raise KeyError(f"HashTable bucket lookup failed for key {key!r}") from exc
-
+        self.logger.debug("Entry and slot: %s; %s", entry, slot)
         if entry is None or slot is None:
             raise KeyError(f"Key {key!r} not present in hash table.")
         return entry
@@ -212,6 +227,8 @@ class VisualHashTable(VisualStructure):
         return (key_cell,value_cell)
     
     def highlight(self, element:VisualElement|Any, color=YELLOW, opacity=0.5, runtime=0.4) -> ApplyMethod|tuple[ApplyMethod,ApplyMethod]:
+        self.logger.debug("Element after _get_entry(): %s", element)
+        self.logger.debug("Element type: %s", type(element))
         element = self._get_entry(key=element)
         if isinstance(element,Entry):
             return self._highlight_entry(entry=element,color=color,opacity=opacity,runtime=runtime)
@@ -229,7 +246,7 @@ class VisualHashTable(VisualStructure):
         if self.scene and is_animating() and not self.scene.in_play:
             self.play(self.highlight(element=entry,runtime=0.4))
             self.play(self.unhighlight(element=entry,runtime=0.3))
-        return entry
+        return entry.value
     
     def __setitem__(self, key, value):
         try:
@@ -301,7 +318,7 @@ class VisualHashTable(VisualStructure):
         self.elements[bucket] = None
         self.entries.pop(popped_entry.key)
         self.remove(popped_entry)
-        self.logger.debug("array.pop index=%s -> len=%d", key, len(self.elements))
+        self.logger.debug("self.elements after pop(): %s",self.elements )
         return popped_entry.value
         
     

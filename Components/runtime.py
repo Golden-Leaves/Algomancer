@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 import weakref
 import numpy as np
-from typing import TYPE_CHECKING,Callable,Any,Generator
+from typing import TYPE_CHECKING,Callable,Any,Generator,Iterable
 from types import FrameType
 from screeninfo import get_monitors
 from enum import Enum
@@ -126,17 +126,38 @@ class AlgoScene(Scene):
         - To play animations sequentially, pass sequential=True.
         """
         self.logger.info(animations)
-       
-        resolved = []
-        for anim in flatten_array(result=[],objs=animations):
-            if not anim:
-                continue
-            anim = anim.build() if isinstance(anim, LazyAnimation) else anim
-            if not isinstance(anim, Animation):
-                raise TypeError(f"Unexpected {type(anim)} passed to play()")
-            resolved.append(anim)
-        if resolved:
-            self.logger.debug("List of animations(inside check): %s", resolved)
+        def resolve_animations(animations: Iterable[Animation | LazyAnimation]) -> Iterable[Animation]:
+            """
+            Resolve a list of Animation or LazyAnimation objects into a list of Animation objects.
+            
+            Parameters
+            ----------
+            animations : Iterable[Animation | LazyAnimation]
+                Animation or LazyAnimation objects to resolve.
+            
+            Returns
+            -------
+            Iterable[Animation]
+                Resolved list of Animation objects.
+            
+            Raises
+            ------
+            TypeError
+                If an unexpected object type is passed to resolve_animations.
+            """
+            resolved = []
+            for anim in flatten_array(result=[],objs=animations):
+                if not anim:
+                    continue
+                anim = anim.build() if isinstance(anim, LazyAnimation) else anim
+                if not isinstance(anim, Animation):
+                    raise TypeError(f"Unexpected {type(anim)} passed to play()")
+                resolved.append(anim)
+            if resolved:
+                self.logger.debug("List of animations(inside check): %s", resolved)
+            return resolved
+        
+        resolved = resolve_animations(animations)
         if sequential:
             for anim in resolved:
                 self.player.play(anim,**kwargs)

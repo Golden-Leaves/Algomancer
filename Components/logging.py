@@ -70,15 +70,78 @@ class DebugLogger:
         self.logger.info("Run started for %s", name)
         
     def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log a debug message with the given message and optional arguments.
+
+        Parameters
+        ----------
+        msg : str
+            The message to be logged.
+        *args : Any
+            Additional arguments to be passed to the logger.
+        **kwargs : Any
+            Additional keyword arguments to be passed to the logger.
+
+        Returns
+        -------
+        None
+        """
         self.logger.debug(msg, *args, **kwargs)
 
     def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log an informational message with the given message and optional arguments.
+        Parameters
+        ----------
+        msg : str
+            The message to be logged.
+        *args : Any
+            Additional arguments to be passed to the logger.
+        **kwargs : Any
+            Additional keyword arguments to be passed to the logger.
+
+        Returns
+        -------
+        None
+        """
         self.logger.info(msg, *args, **kwargs)
 
     def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log a warning message with the given message and optional arguments.
+
+        Parameters
+        ----------
+        msg : str
+            The message to be logged.
+        *args : Any
+            Additional arguments to be passed to the logger.
+        **kwargs : Any
+            Additional keyword arguments to be passed to the logger.
+
+        Returns
+        -------
+        None
+        """
         self.logger.warning(msg, *args, **kwargs)
 
     def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log an error message with the given message and optional arguments.
+
+        Parameters
+        ----------
+        msg : str
+            The message to be logged.
+        *args : Any
+            Additional arguments to be passed to the logger.
+        **kwargs : Any
+            Additional keyword arguments to be passed to the logger.
+
+        Returns
+        -------
+        None
+        """
         self.logger.error(msg, *args, **kwargs)
         
     def log_structure_state(
