@@ -1,6 +1,0 @@
-# This file is used internally by FFMPEG.
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/2016333726_3779044466_2358810818.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_1943880919_1740454159.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_3635287435_25623617.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_391313472_1819637820.mp4'
-file 'file:C:/Users/PC/Desktop/Programming/python_projects/Algomancer/media/videos/array_prod/720p30/partial_movie_files/ArrayScene/543634251_4217992463_4056343530.mp4'
