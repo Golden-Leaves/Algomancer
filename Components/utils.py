@@ -40,3 +40,15 @@ def load_png(
         (int(image.get_width() * width), int(image.get_height() * height)),
     )
     return scaled_image, scaled_image.get_rect()
+def get_screen_color() -> pygame.Color:
+    """
+    Get the color of the pixel at the top-left corner of the screen.
+
+    Returns:
+        pygame.Color: The color of the pixel at the top-left corner of the screen.
+    """
+    screen = pygame.display.get_surface()
+    if screen is None:
+        return pygame.Color(0, 0, 0)
+    color = screen.get_at((0, 0))
+    return pygame.Color(color)
