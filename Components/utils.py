@@ -1,29 +1,42 @@
+from __future__ import annotations
+
+from pathlib import Path
 import pygame
-import os
-def load_png(filename: str, width: float = 1, height: float = 1) -> tuple[pygame.Surface, pygame.Rect]:
+
+ASSETS_DIR = Path("assets") / "images"
+
+
+def load_png(
+    filename: str, width: float = 1.0, height: float = 1.0
+) -> tuple[pygame.Surface, pygame.Rect]:
     """
-    Load an image from the assets directory and return the loaded image
-    and its rectangle.
+    Load an image from the assets directory and return the loaded image and its rectangle.
 
     Args:
-        filename (str): The filename of the image to load.
-        width (float): The width multiplier of the image. Defaults to 1.
-        height (float): The height multiplier of the image. Defaults to 1.
+        filename: The filename of the image to load.
+        width: The width multiplier of the image. Must be positive.
+        height: The height multiplier of the image. Must be positive.
 
     Returns:
-        tuple[pygame.Surface, pygame.Rect]: A tuple containing the loaded
-        image and its rectangle.
+        A tuple containing the loaded image and its rectangle.
+
+    Raises:
+        FileNotFoundError: If the requested image file does not exist.
+        ValueError: If ``width`` or ``height`` is non-positive.
     """
-    fullname = os.path.join("assets","images",filename)
-    try:
-        image = pygame.image.load(fullname)
-        if image.convert_alpha() is None:
-            image = image.convert()
-        else:
-            image = image.convert_alpha()
-    except FileNotFoundError:
-        raise Exception(f"Could not load image: {fullname}")
-    
-    image = pygame.transform.smoothscale(image, (int(image.get_width() * width), int(image.get_height() * height)))
-    return image, image.get_rect()
-    
+
+    if width <= 0 or height <= 0:
+        raise ValueError("Width and height multipliers must be positive values.")
+
+    image_path = ASSETS_DIR / filename
+    if not image_path.exists():
+        raise FileNotFoundError(f"Could not load image: {image_path}")
+
+    image = pygame.image.load(image_path.as_posix())
+    image = image.convert_alpha() if image.get_alpha() is not None else image.convert()
+
+    scaled_image = pygame.transform.smoothscale(
+        image,
+        (int(image.get_width() * width), int(image.get_height() * height)),
+    )
+    return scaled_image, scaled_image.get_rect()
