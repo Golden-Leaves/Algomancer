@@ -47,8 +47,8 @@ def get_screen_color() -> pygame.Color:
     Returns:
         pygame.Color: The color of the pixel at the top-left corner of the screen.
     """
-    screen = pygame.display.get_surface()
+    screen: pygame.Surface = pygame.display.get_surface()
     if screen is None:
         return pygame.Color(0, 0, 0)
-    color = screen.get_at((0, 0))
-    return pygame.Color(color)
+    color: tuple[int, int, int, int] = screen.get_at((0, 0))
+    return pygame.Color(*color)

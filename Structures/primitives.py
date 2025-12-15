@@ -66,7 +66,7 @@ class Cell(VisualElement):
         
         
 class Node(VisualElement):
-    def __init__(self,value, pos,radius:int = 65, *groups, surface: pygame.Surface = None,
+    def __init__(self,value, pos,radius:int = 40, *groups, surface: pygame.Surface = None,
                  fill_color: tuple[int, int, int] = None,
                  border_color: tuple[int, int, int] = (255, 255, 255),border_width: int = 1, border_radius: int = 0):
         super().__init__(pos, radius * 2, radius * 2, surface, *groups)
@@ -77,7 +77,7 @@ class Node(VisualElement):
         self.border_color = border_color
         self.border_width = border_width
         self.border_radius = border_radius
-        self.text = pygame.font.Font(FONT_PATH.as_posix(), FONT_SIZE).render(value, True, TEXT_COLOR)
+        self.text = pygame.font.Font(FONT_PATH.as_posix(), FONT_SIZE).render(str(value), True, TEXT_COLOR)
         self.text_rect = self.text.get_rect(center=self.rect.center)
     
     def draw(self,surface: pygame.Surface,
@@ -89,7 +89,7 @@ class Node(VisualElement):
         border_width = border_width if border_width is not None else self.border_width
         border_radius = border_radius if border_radius is not None else self.border_radius
 
-        pygame.draw.circle(surface, fill_color, self.rect.center, self.radius,width=border_width,border_radius=border_radius)
+        pygame.draw.circle(surface, fill_color, self.rect.center, self.radius,width=border_width)
         pygame.draw.circle(surface, border_color, self.rect.center, self.radius,border_width)
         surface.blit(self.text, self.text_rect)
     

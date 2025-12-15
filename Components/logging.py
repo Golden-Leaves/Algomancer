@@ -5,10 +5,12 @@ from logging.handlers import RotatingFileHandler
 from typing import Any, TYPE_CHECKING
 from pprint import pformat
 if TYPE_CHECKING:
-    from Structures.base import VisualElement,VisualStructure
+    from Structures.base import VisualElement
 LOGGING_READY = False
 LOG_FILE = os.path.join("DEBUG","algomancer.log")
-
+if not os.path.exists(os.path.dirname(LOG_FILE)):
+    os.mkdir(os.path.dirname(LOG_FILE))
+open(LOG_FILE,"a").close()
 class DebugLogger:
     """
     Compose a standard Python logger with Algomancer-specific helpers.
@@ -26,12 +28,6 @@ class DebugLogger:
     output : bool
         When True, also attach a stream handler for console output.
 
-    Key methods
-    -----------
-    - log_stucture_state(structure, label="state", level="debug")
-      Logs high-level info for a structure and, if provided, its elements.
-    - log_element_state(element, label="state", level="debug", depth=2)
-      Logs a detailed snapshot of a single visual element.
     """
     def __init__(self, logger_name: str | None = None, output: bool = True) -> None:
         """Configure root handlers once and return the requested logger."""

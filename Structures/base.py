@@ -7,9 +7,10 @@ class VisualElement(pygame.sprite.Sprite):
     """Base class for visual elements rendered with pygame sprites."""
 
     def __init__(
-        self, pos: tuple[float, float], width: int, height: int, *groups: pygame.sprite.AbstractGroup
+        self, pos: tuple[float, float], width: int, height: int,surface: pygame.Surface = None, *groups: pygame.sprite.AbstractGroup
     ) -> None:
         super().__init__(*groups)
+        self.surface = surface if surface is not None else pygame.display.get_surface()
         self.logger = DebugLogger(logger_name=f"{__name__}.{self.__class__.__name__}")
         self.pos: pygame.math.Vector2 = pygame.math.Vector2(pos)
         self.rect = pygame.Rect(0, 0 , width, height)
