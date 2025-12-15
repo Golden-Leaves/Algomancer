@@ -66,10 +66,10 @@ class Cell(VisualElement):
         
         
 class Node(VisualElement):
-    def __init__(self,value, pos, width, height,*groups, surface: pygame.Surface = None, radius:int = 65,
+    def __init__(self,value, pos,radius:int = 65, *groups, surface: pygame.Surface = None,
                  fill_color: tuple[int, int, int] = None,
                  border_color: tuple[int, int, int] = (255, 255, 255),border_width: int = 1, border_radius: int = 0):
-        super().__init__(pos, width, height, surface, *groups)
+        super().__init__(pos, radius * 2, radius * 2, surface, *groups)
         self.logger = DebugLogger(logger_name=f"{__name__}.{self.__class__.__name__}")
         self.radius = radius
         self.value = value
