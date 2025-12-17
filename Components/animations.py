@@ -118,4 +118,11 @@ class FadeOut(Animation):
         self.alpha = target._alpha_filter.alpha
     def _apply(self,t:float):
         self.target._alpha_filter.alpha = self.alpha * (1-t)
-
+        
+class ScaleTo(Animation):
+    def __init__(self, target:VisualElementNode, scale:float=1.0, **kwargs):
+        super().__init__(target,**kwargs)
+        self.scale = scale
+    def _apply(self,t:float):
+        self.target.transform.scale = (self.scale * t,self.scale * t)
+    
