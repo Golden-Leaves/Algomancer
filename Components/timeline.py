@@ -11,7 +11,6 @@ class Timeline:
             self.active.append(animation)   
         
     def update(self,dt:float):
-        print("timeline hi")
         self.elapsed_time += dt
         finished = []
         for animation in self.active:
