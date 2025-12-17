@@ -52,3 +52,21 @@ def get_screen_color() -> pygame.Color:
         return pygame.Color(0, 0, 0)
     color = screen.get_at((0, 0))
     return pygame.Color(color)
+def rgba(r, g, b, a=255):
+    return (r/255, g/255, b/255, a/255)
+def normalize_color(c):
+    #Hexadecimal
+    if isinstance(c, str):
+        c = c.lstrip("#")
+        r = int(c[0:2], 16) / 255
+        g = int(c[2:4], 16) / 255
+        b = int(c[4:6], 16) / 255
+        return (r, g, b, 1.0)
+
+    #Tuple/list
+    if len(c) == 3:
+        return (*c, 1.0)
+    if len(c) == 4:
+        return tuple(c)
+
+    raise ValueError("Unsupported color format")
