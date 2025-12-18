@@ -25,20 +25,20 @@ class DebugLogger:
         Defaults to the module name of this wrapper when ``None``.
     output : bool
         When True, also attach a stream handler for console output.
-
-    Key methods
-    -----------
-    - log_stucture_state(structure, label="state", level="debug")
-      Logs high-level info for a structure and, if provided, its elements.
-    - log_element_state(element, label="state", level="debug", depth=2)
-      Logs a detailed snapshot of a single visual element.
     """
     def __init__(self, logger_name: str | None = None, output: bool = True) -> None:
         """Configure root handlers once and return the requested logger."""
         global LOGGING_READY
         if not LOGGING_READY:
-            current_directory = os.path.dirname(os.path.abspath(__file__))
-            env_path = os.path.join(current_directory,"..",".env")
+            current_directory = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            debug_directory = os.path.join(current_directory, "DEBUG")
+            os.makedirs(debug_directory, exist_ok=True)
+            
+            global LOG_FILE
+            LOG_FILE = os.path.join(debug_directory, "algomancer.log")
+            open(LOG_FILE, "a", encoding="utf-8").close()
+            
+            env_path = os.path.join(current_directory, ".env")
             print(env_path)
             load_dotenv(env_path)
             logging_level = (os.getenv("LOGGING_LEVEL") or "INFO").upper()
