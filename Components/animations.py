@@ -57,6 +57,24 @@ class Animation(ABC):
         pass
 class Sequence:
     def __init__(self,*animations:Animation):
+        """
+        Initializes a Sequence with the given animations.
+        Animations in a sequence will be played *sequentially*.
+        
+        Parameters
+        ----------
+        *animations : Animation
+            The animations to add to the sequence.
+
+        Attributes
+        ----------
+        animations : list[Animation]
+            The list of animations in the sequence.
+        done : bool
+            Whether the sequence is done or not.
+        logger : DebugLogger
+            A logger for debugging purposes.
+        """
         self.animations = list(animations)
         self.done = False  
         self.logger = DebugLogger(f"{self.__class__.__name__}",output=True)  
@@ -70,16 +88,14 @@ class Sequence:
         """Calls current animation's tick method and returns its return value.
         If no animations exist, sets done to True
         """
-        self.logger.debug("Sequence animations: %s",self.animations)
-        self.logger.debug("Current animation: %s",self.get_current_animation())
         animation = self.get_current_animation()
         t = animation.tick(elapsed_time)
         if animation.done:
             self.remove_current_animation()
             if self.is_empty():
-                self.logger.debug("Sequence done")
                 self.done = True
         return t
+    
     
 class MoveTo(Animation):
     def __init__(self,target:VisualElementNode,pos:tuple,**kwargs):
@@ -116,7 +132,10 @@ class MoveTo(Animation):
         self.target.transform.translate = (x,y)
       
 class Wait(Animation):
-    pass
+    def __init__(self,**kwargs):
+        super().__init__(target=None,**kwargs)
+    def _apply(self,t:float):
+        pass
      
 class FadeIn(Animation):
     
@@ -183,18 +202,24 @@ class Scale(Animation):
         sy = self._start_scale[1] + (self.scale - self._start_scale[1]) * t
         self.target.transform.scale = (sx,sy)
     
-class Highlight(Animation):
+class Highlight(Animation): #Update this to keep start_color as well
     def __init__(self, target:VisualElementNode,color=YELLOW,**kwargs):
         from Components.utils import normalize_color
         super().__init__(target, **kwargs)
         self.color = normalize_color(color)
-        if not hasattr(target,"_base_color"):
-            target._base_color = target.color
+        self._start_color = None
     def _apply(self,t:float):
-        r = self.target._base_color[0] + (self.color[0] - self.target._base_color[0]) * t
-        g = self.target._base_color[1] + (self.color[1] - self.target._base_color[1]) * t
-        b = self.target._base_color[2] + (self.color[2] - self.target._base_color[2]) * t
-        a = self.target._base_color[3] + (self.color[3] - self.target._base_color[3]) * t
+        from vispy.color import ColorArray
+        from Components.utils import normalize_color
+        if self._start_color is None:
+            c: ColorArray = self.target.body.color
+            self._start_color = normalize_color(c.rgba)
+            
+            
+        r = self._start_color[0] + (self.color[0] - self._start_color[0]) * t
+        g = self._start_color[1] + (self.color[1] - self._start_color[1]) * t
+        b = self._start_color[2] + (self.color[2] - self._start_color[2]) * t
+        a = self._start_color[3] + (self.color[3] - self._start_color[3]) * t
         target_color = (r,g,b,a)
         self.target.body.color = target_color
         
@@ -202,10 +227,13 @@ class Unhighlight(Animation):
     def __init__(self, target,**kwargs):
         super().__init__(target,**kwargs)
     def _apply(self,t:float):
-        r = self.target.color[0] + (self.target._base_color[0] - self.target.color[0]) * t
-        g = self.target.color[1] + (self.target._base_color[1] - self.target.color[1]) * t
-        b = self.target.color[2] + (self.target._base_color[2] - self.target.color[2]) * t
-        a = self.target.color[3] + (self.target._base_color[3] - self.target.color[3]) * t
+        from vispy.color import ColorArray
+        from Components.utils import normalize_color
+        target_body_color = normalize_color(self.target.body.color.rgba)
+        r = target_body_color[0] + (self.target._base_color[0] - target_body_color[0]) * t
+        g = target_body_color[1] + (self.target._base_color[1] - target_body_color[1]) * t
+        b = target_body_color[2] + (self.target._base_color[2] - target_body_color[2]) * t
+        a = target_body_color[3] + (self.target._base_color[3] - target_body_color[3]) * t
         target_color = (r,g,b,a)
         self.target.body.color = target_color
     

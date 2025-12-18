@@ -2,10 +2,13 @@ from vispy import scene
 from typing import Any,TYPE_CHECKING
 from vispy.scene.visuals import Polygon
 from vispy.visuals.transforms import STTransform   
+from Components.utils import normalize_color
+from Components.logging import DebugLogger
+from Components.constants import *
 if TYPE_CHECKING:
     from Components.scene import AlgoScene
 class VisualElementNode(scene.Node):
-    def __init__(self, value: Any, scene: "AlgoScene", pos: tuple[float, float] = (0,0), color: tuple[float, float, float, float] = (0.15, 0.55, 0.95, 1.0), border_width: int = 2, border_color: str = "white",
+    def __init__(self, value: Any, scene: "AlgoScene", pos: tuple[float, float] = (0,0), color: tuple[float, float, float, float] = BLUE_ALGO, border_width: int = 2, border_color: str = "white",
                  parent: scene.widgets.ViewBox = None, name: str = None, transforms: list[STTransform] = None) -> None:
         """
         Initializes a VisualElementNode with the given parameters.
@@ -17,7 +20,7 @@ class VisualElementNode(scene.Node):
         pos : tuple[float, float]
             The position of the node. Defaults to (0,0).
         color : tuple[float, float, float, float]
-            The color of the node. Defaults to (0.15, 0.55, 0.95, 1.0).
+            The color of the node. Defaults to (0.15, 0.55, 0.95, 1.0). Hexadecimal format is also acceptable
         border_width : int
             The width of the border of the node. Defaults to 2.
         border_color : str
@@ -38,18 +41,22 @@ class VisualElementNode(scene.Node):
         super().__init__(parent, name, transforms)
         if scene is None:
             raise ValueError("scene cannot be None")
+        self.transform = STTransform(scale=(1,1),translate=pos)   
         self.scene = scene
         self.body: Polygon = None
         self.value = value
         self._pos = pos
-        self.color = color
+        self._base_color = normalize_color(color)
         self.border_width = border_width
         self.border_color = border_color
+        self.logger = DebugLogger(f"{self.__class__.__name__}",output=True) 
+       
     @property
     def pos(self):
         return self._pos
     
     @pos.setter
-    def pos(self,pos):
-        self._pos = pos
+    def pos(self,new_pos):
+        self._pos = new_pos
+    
         
