@@ -132,8 +132,8 @@ class MoveTo(Animation):
         self.target.transform.translate = (x,y)
       
 class Wait(Animation):
-    def __init__(self,**kwargs):
-        super().__init__(target=None,**kwargs)
+    def __init__(self,duration:float=1.0,**kwargs):
+        super().__init__(target=None,duration=float(duration),**kwargs)
     def _apply(self,t:float):
         pass
      
@@ -189,7 +189,7 @@ class FadeOut(Animation):
 class Scale(Animation):
     def __init__(self, target:VisualElementNode, scale:float=1.0, **kwargs):
         super().__init__(target,**kwargs)
-        self.scale = scale
+        self.scale = float(scale)
         self._start_scale = None
     def _apply(self,t:float):
         if self._start_scale is None:
@@ -227,7 +227,6 @@ class Unhighlight(Animation):
     def __init__(self, target,**kwargs):
         super().__init__(target,**kwargs)
     def _apply(self,t:float):
-        from vispy.color import ColorArray
         from Components.utils import normalize_color
         target_body_color = normalize_color(self.target.body.color.rgba)
         r = target_body_color[0] + (self.target._base_color[0] - target_body_color[0]) * t
@@ -237,3 +236,44 @@ class Unhighlight(Animation):
         target_color = (r,g,b,a)
         self.target.body.color = target_color
     
+class Indicate(Animation):
+    def __init__(self, target,color=YELLOW,scale:float=1.5, **kwargs):
+        super().__init__(target,duration=1.5, **kwargs)
+        from Components.utils import normalize_color
+        self.color = normalize_color(color)
+        self._start_color = None
+        self.scale = float(scale)
+        self._start_scale = None
+    def _apply(self,t:float):
+        from Components.utils import normalize_color
+        if t <= 0.5:
+            if self._start_color is None:
+                c = self.target.body.color
+                self._start_color = normalize_color(c.rgba)
+            if self._start_scale is None:
+                s = self.target.transform.scale
+                if s is None:
+                    s = (1.0,1.0)
+                self._start_scale = tuple(s)
+                
+            r = self._start_color[0] + (self.color[0] - self._start_color[0]) * t * 2
+            g = self._start_color[1] + (self.color[1] - self._start_color[1]) * t * 2
+            b = self._start_color[2] + (self.color[2] - self._start_color[2]) * t * 2
+            a = self._start_color[3] + (self.color[3] - self._start_color[3]) * t * 2
+            target_color = (r,g,b,a)
+            self.target.body.color = target_color
+            
+            sx = self._start_scale[0] + (self.scale - self._start_scale[0]) * t
+            sy = self._start_scale[1] + (self.scale - self._start_scale[1]) * t
+            self.target.transform.scale = (sx,sy)
+        else:
+            r = self.color[0] + (self._start_color[0] - self.color[0]) * (t-0.5) * 2
+            g = self.color[1] + (self._start_color[1] - self.color[1]) * (t-0.5) * 2
+            b = self.color[2] + (self._start_color[2] - self.color[2]) * (t-0.5) * 2            
+            a = self.color[3] + (self._start_color[3] - self.color[3]) * (t-0.5) * 2
+            target_color = (r,g,b,a)
+            self.target.body.color = target_color
+            
+            sx = self.scale + (self._start_scale[0] - self.scale) * (t-0.5) * 2
+            sy = self.scale + (self._start_scale[1] - self.scale) * (t-0.5) * 2
+            self.target.transform.scale = (sx,sy)
