@@ -6,7 +6,7 @@ from Components.constants import *
 from Components.logging import DebugLogger
 #Add apply_on_children() to apply effect on all children when we implement VisualStructureNode
 class Animation(ABC):
-    def __init__(self,target:VisualElementNode,duration:float=1.0,**kwargs):
+    def __init__(self,target:VisualElementNode,duration:float=1.0,start_offset:float=0.0,**kwargs):
         """
         Initializes an Animation with the given target and duration.
 
@@ -31,6 +31,7 @@ class Animation(ABC):
         self.duration = float(duration) 
         self.target = target
         self._start_time:float = None
+        self.start_offset = start_offset
         self.done = False
 
     def __repr__(self) -> str:
@@ -40,9 +41,9 @@ class Animation(ABC):
     def tick(self,elapsed_time:float) -> float:
         """Advances animation by computing progress t from elapsed_time, apply the animation at t, and return t."""
         if self._start_time is None:
-            self._start_time = elapsed_time
+            self._start_time = elapsed_time + self.start_offset
         elapsed = elapsed_time - self._start_time
-        t = elapsed / self.duration #alpha(progress)
+        t = max(0.0,min(1.0,elapsed / self.duration)) #alpha(progress)
         self.apply(t)
         if t >= 1.0:
             self.done = True
@@ -95,8 +96,31 @@ class Sequence:
             if self.is_empty():
                 self.done = True
         return t
-    
-    
+class Parallel:
+    def __init__(self,*animations:Animation,lag_ratio:float=0.0):
+        self.animations = list(animations)
+        self.lag_ratio = float(lag_ratio)
+        self.done = False
+        #Basically a scale
+        self.group_duration = max([animation.duration for animation in self.animations]) #Group lasts as long as the longest animation
+        self.compute_start_offsets(animations=animations,lag_ratio=lag_ratio,group_duration=self.group_duration)
+    def compute_start_offsets(self,animations:list[Animation],lag_ratio:float,group_duration:float) -> None:
+        for i,anim in enumerate(animations):
+            anim.start_offset = i * lag_ratio * group_duration
+    def is_empty(self) -> bool:
+        return len(self.animations) == 0
+    def tick(self,elapsed_time:float) -> None:
+        finished = []
+        for animation in self.animations:
+            t  = animation.tick(elapsed_time)
+            if animation.done:
+                finished.append(animation)  
+        for finished_animation in finished:
+            self.animations.remove(finished_animation)
+        if self.is_empty():
+            self.done = True
+        
+        
 class MoveTo(Animation):
     def __init__(self,target:VisualElementNode,pos:tuple,**kwargs):
         """
