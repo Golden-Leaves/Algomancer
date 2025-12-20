@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class VisualElementNode(scene.Node):
     def __init__(self, value: Any, pos: tuple[float, float] = (0,0), color: tuple[float, float, float, float] = BLUE_ALGO, border_width: int = 2, border_color: str = "white",
                 text_size: int = 20,text_color: tuple[float, float, float, float] = WHITE,
-                parent: scene.widgets.ViewBox = None, name: str = None, transforms: list[STTransform] = None) -> None:
+                parent: scene.widgets.ViewBox = None, name: str = None, transforms: list[STTransform] = None,**kwargs) -> None:
         """
         Initializes a VisualElementNode with the given parameters.
 
@@ -39,7 +39,7 @@ class VisualElementNode(scene.Node):
         None
         """
         from Components.execution_context import get_scene
-        self.scene = get_scene()
+        self.scene = get_scene() if get_scene() else kwargs.pop("scene",None)
         if parent is None:
             parent = self.scene.root
         self.value = value
@@ -57,9 +57,32 @@ class VisualElementNode(scene.Node):
        
     @property
     def pos(self):
-        return self.transform.translate
-    
-    def evaluate_operation(self,operation:str,other:Any,reversed:bool=False):
+        import numpy as np
+        return np.array(self.transform.map((0, 0)), dtype=float)
+    def __index__(self):
+        return int(self.value)
+    def __int__(self):
+        return int(self.value)
+    def __str__(self):
+        return str(self.value)
+    def evaluate_operation(self,operation:str,other:Any,reversed:bool=False) -> Any:
+        """
+        Evaluates a given operation with the given value.
+
+        Parameters
+        ----------
+        operation : str
+            The operation to evaluate.
+        other : Any
+            The value to evaluate with.
+        reversed : bool, optional
+            Whether to reverse the operation. Defaults to False.
+
+        Returns
+        -------
+        Any
+            The result of the evaluation.
+        """
         from Components.utils import get_operation
         if hasattr(other,"value"): other = other.value
         operation = get_operation(operation)
@@ -136,8 +159,24 @@ class VisualElementNode(scene.Node):
         self.evaluate_operation(operation="%",other=other,reversed=True)
         
     def compare_values(self,operation:str,other:Any, reversed:bool=False):
+        """
+        Compares two values with a given operation and records an animation if both values are VisualElementNodes.
+
+        Parameters
+        ----------
+        operation : str
+            The operation to perform.
+        other : Any
+            The value to compare with.
+        reversed : bool, optional
+            Whether to reverse the operation. Defaults to False.
+
+        Returns
+        -------
+        bool
+            The result of the comparison.
+        """
         from Components.animations import Indicate,Parallel
-        if not isinstance(other,VisualElementNode): return NotImplemented
         result = self.evaluate_operation(operation=operation,other=other,reversed=reversed)
         tracer = get_tracer()
         if isinstance(other,VisualElementNode):
@@ -168,6 +207,8 @@ class VisualElementNode(scene.Node):
             return super().__ge__(other)
         return self.compare_values(operation=">=",other=other)
     def __eq__(self, other):
+        if self is other:
+            return True
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__eq__(other)
@@ -184,10 +225,10 @@ class VisualElementNode(scene.Node):
 
 class VisualStructureNode(scene.Node):
     def __init__(self,pos:tuple[float,float]=(0,0), height:int=1,width:int=1,text_color=WHITE,text_size:int=20, body_color=BLUE_ALGO,
-                parent = None, name = None, transforms = None):
+                parent = None, name = None, transforms = None,**kwargs):
         from Components.utils import normalize_color
         from Components.execution_context import get_scene
-        self.scene = get_scene()
+        self.scene = get_scene() if get_scene() else kwargs.pop("scene",None)
         if parent is None:
             parent = self.scene.root
         super().__init__(parent, name, transforms)   
@@ -203,7 +244,8 @@ class VisualStructureNode(scene.Node):
     
     @property
     def pos(self):
-        return self.transform.translate
+        import numpy as np
+        return np.array(self.transform.map((0, 0)), dtype=float)
     
     def get_elements(self):
         from Structures.base import VisualElementNode
@@ -214,4 +256,13 @@ class VisualStructureNode(scene.Node):
     def get_index(self, element:VisualElementNode):
         from Structures.base import VisualElementNode
         return [element for element in self.children if isinstance(element,VisualElementNode)].index(element)
-    
+    def compute_layout_offset(self) -> dict[VisualElementNode, tuple[float, float]]:
+        """
+        Computes the offset of each element in the layout from the center of the structure.
+
+        Returns
+        -------
+        dict[VisualElementNode, tuple[float, float]]
+            A dictionary where the keys are the elements and the values are tuples representing the offset from the center.
+        """
+        pass   
