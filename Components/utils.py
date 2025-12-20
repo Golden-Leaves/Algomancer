@@ -1,61 +1,26 @@
 from __future__ import annotations
-
-from pathlib import Path
-import pygame
-
-ASSETS_DIR = Path("assets") / "images"
-
-
-def load_png(
-    filename: str, width: float = 1.0, height: float = 1.0
-) -> tuple[pygame.Surface, pygame.Rect]:
-    """
-    Load an image from the assets directory and return the loaded image and its rectangle.
-
-    Args:
-        filename: The filename of the image to load.
-        width: The width multiplier of the image. Must be positive.
-        height: The height multiplier of the image. Must be positive.
-
-    Returns:
-        A tuple containing the loaded image and its rectangle.
-
-    Raises:
-        FileNotFoundError: If the requested image file does not exist.
-        ValueError: If ``width`` or ``height`` is non-positive.
-    """
-
-    if width <= 0 or height <= 0:
-        raise ValueError("Width and height multipliers must be positive values.")
-
-    image_path = ASSETS_DIR / filename
-    if not image_path.exists():
-        raise FileNotFoundError(f"Could not load image: {image_path}")
-
-    image = pygame.image.load(image_path.as_posix())
-    image = image.convert_alpha() if image.get_alpha() is not None else image.convert()
-
-    scaled_image = pygame.transform.smoothscale(
-        image,
-        (int(image.get_width() * width), int(image.get_height() * height)),
-    )
-    return scaled_image, scaled_image.get_rect()
-def get_screen_color() -> pygame.Color:
-    """
-    Get the color of the pixel at the top-left corner of the screen.
-
-    Returns:
-        pygame.Color: The color of the pixel at the top-left corner of the screen.
-    """
-    screen = pygame.display.get_surface()
-    if screen is None:
-        return pygame.Color(0, 0, 0)
-    color = screen.get_at((0, 0))
-    return pygame.Color(color)
+from typing import Callable, Any
+import operator as op
 def rgba(r, g, b, a=255):
     return (r/255, g/255, b/255, a/255)
 def normalize_color(c):
     #Hexadecimal
+    """
+    Normalize a color to a tuple of four float values between 0 and 1.
+
+    The color can be provided as a string representing a hexadecimal color code,
+    a tuple or list of three or four float values between 0 and 1 or
+    a single integer representing the grayscale value of the color.
+
+    Args:
+        c: str, tuple or list. The color to be normalized.
+
+    Returns:
+        tuple: A tuple of four float values representing the normalized color.
+
+    Raises:
+        ValueError: If the provided color format is not supported.
+    """
     if isinstance(c, str):
         c = c.lstrip("#")
         r = int(c[0:2], 16) / 255
@@ -70,3 +35,62 @@ def normalize_color(c):
         return tuple(c)
 
     raise ValueError("Unsupported color format")
+_OPS: dict[str, Callable[..., Any]] = {
+    # Arithmetic
+    "+": op.add,
+    "-": op.sub,
+    "*": op.mul,
+    "/": op.truediv,
+    "//": op.floordiv,
+    "%": op.mod,
+    "**": op.pow,
+
+    # Bitwise
+    "&": op.and_,
+    "|": op.or_,
+    "^": op.xor,
+    "~": op.invert,
+    "<<": op.lshift,
+    ">>": op.rshift,
+
+    # Comparisons
+    "==": op.eq,
+    "!=": op.ne,
+    "<": op.lt,
+    "<=": op.le,
+    ">": op.gt,
+    ">=": op.ge,
+
+    # Logical
+    "and": lambda a, b: a and b,
+    "or": lambda a, b: a or b,
+    "not": lambda a: not a,
+}
+
+
+def get_operation(operation: str) -> Callable[..., Any]:
+    
+    """
+    Retrieve a Python operator function based on its symbol.
+
+    Parameters
+    ----------
+    operation : str
+        The string representation of the operator
+        (e.g. '+', '-', '*', '/', '==', 'and', etc.)
+
+    Returns
+    -------
+    callable
+        The corresponding function from the operator module
+        or a logical lambda for 'and', 'or', 'not'.
+
+    Raises
+    ------
+    ValueError
+        If the operator symbol is not supported.
+    """
+    try:
+        return _OPS[operation]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported operator: {operation!r}") from exc
