@@ -14,13 +14,15 @@ class VisualArray(VisualStructureNode):
         for i in range(len(values)):
             center = (len(values) - 1) / 2
             x = (i - center) * self.width
-            cell = Cell(scene=self.scene,parent=self,value=values[i],pos=(x,self.pos[1])
+            cell = Cell(parent=self,value=values[i],pos=(x,self.pos[1])
                         ,color=self.body_color,text_color=self.text_color,text_size=self.text_size)
     
     def __getitem__(self, index):
-        return self.get_element(index).value
+        return self.get_element(index)
     def __setitem__(self, index, value):
         cell:Cell = self.get_element(index)
         cell.set_value(value)
     def __len__(self):
         return len(self.get_elements())
+    
+   

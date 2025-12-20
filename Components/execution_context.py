@@ -19,6 +19,7 @@ class Tracer:
         """
         self.enabled = False
         self.animations: list[Animation|Sequence|Parallel] = []
+        self._in_compare :bool = False
 
     def begin(self):
         self.enabled = True
@@ -60,21 +61,21 @@ class ExecutionContext:
 
 def visualize(user_code:str):
     from Structures.arrays import VisualArray,Cell
-    from Components.scene import AlgoScene
+    from Components.animations import Sequence
     from Components.logging import DebugLogger
     logger = DebugLogger(f"{__name__}.visualize")
+    ctx = ExecutionContext()
     user_globals = {
     "__builtins__": __builtins__,
     "VisualArray": VisualArray,
     "Cell": Cell,
+    "DebugLogger":DebugLogger,
+    "scene": ctx.scene
 }
-    ctx = ExecutionContext()
     with ctx:
         ctx.run(user_code=user_code,user_globals=user_globals)
     events = ctx.tracer.animations
-    logger.debug("Animation Events: %s",events)
-    logger.debug("User globals: %s",user_globals)
-    
+    logger.debug("Animations: %s",events)
     if not events:
         return
     if len(events) == 1:
