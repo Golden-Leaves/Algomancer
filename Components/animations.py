@@ -5,6 +5,7 @@ from vispy.visuals.filters import Alpha
 from Components.constants import *
 from Components.logging import DebugLogger
 from collections import deque
+from typing import Callable
 #Add apply_on_children() to apply effect on all children when we implement VisualStructureNode
 class Animation(ABC):
     def __init__(self, target: VisualElementNode|VisualStructureNode, duration: float = 1.0, start_offset: float = 0.0, **kwargs):
@@ -38,7 +39,29 @@ class Animation(ABC):
         self._start_time = None
         self.start_offset = start_offset
         self.done = False
+        self._on_finish: list[Callable] = []
+    def add_on_finish(self,callback) -> Animation:
+        """
+        Registers a callback to call when the animation is finished.
 
+        Parameters
+        ----------
+        callback : Callable
+            The callback to call when the animation is finished.
+        """
+        self._on_finish.append(callback)
+        return self
+    def _finish(self):
+        """
+        Called when the animation is finished. If the animation is already finished, does nothing.
+        Otherwise, sets the animation as finished and calls all the callbacks registered with `add_on_finish`.
+        """
+
+        if self.done:
+            return
+        self.done = True
+        for callback in self._on_finish:
+            callback()
     def __repr__(self) -> str:
         cls = self.__class__.__name__
         tgt_type = getattr(self.target, "__class__", type(self.target)).__name__
@@ -61,6 +84,7 @@ class Animation(ABC):
     @abstractmethod
     def _apply(self):
         pass
+
 class Sequence:
     def __init__(self,*animations:Animation):
         """
@@ -85,12 +109,22 @@ class Sequence:
         self.done = False  
         self.logger = DebugLogger(f"{self.__class__.__name__}",output=True)  
         self.duration = sum([animation.duration for animation in self.animations]) if self.animations else 0.0 
+        self._on_finish: list[Callable] = []
+    def add_on_finish(self,callback) -> Sequence:
+        self._on_finish.append(callback)
+        return self
+    def _finish(self): 
+        if self.done:
+            return
+        self.done = True
+        for callback in self._on_finish:
+            callback()
     def remove_current_animation(self) -> None:
          self.animations.popleft()
     def is_empty(self) -> bool:
         return len(self.animations) == 0
     def get_current_animation(self) -> Animation:
-        return self.animations[0]
+        return self.animations[0] #Add .finish() call to Aniamtion
     def tick(self,elapsed_time:float) -> float:
         """Calls current animation's tick method and returns its return value.
         If no animations exist, sets done to True
@@ -98,10 +132,12 @@ class Sequence:
         animation = self.get_current_animation()
         t = animation.tick(elapsed_time)
         if animation.done:
+            animation._finish()
             self.remove_current_animation()
             if self.is_empty():
+                self._finish()
                 self.done = True
-        return t
+        return t 
 class Parallel:
     def __init__(self,*animations:Animation,lag_ratio:float=0.0):
         self.animations = list(animations)
@@ -111,7 +147,16 @@ class Parallel:
         self.group_duration = max([animation.duration for animation in self.animations]) #Group lasts as long as the longest animation
         self.compute_start_offsets(animations=animations,lag_ratio=lag_ratio,group_duration=self.group_duration)
         self.duration = max([(animation.duration + animation.start_offset) for animation in self.animations]) if self.animations else 0.0
-        #max(start_offset + duration)
+        self._on_finish: list[Callable] = []
+    def add_on_finish(self,callback) -> Parallel:
+        self._on_finish.append(callback)
+        return self
+    def _finish(self):
+        if self.done:
+            return
+        self.done = True
+        for callback in self._on_finish:
+            callback()
     def compute_start_offsets(self,animations:list[Animation],lag_ratio:float,group_duration:float) -> None:
         for i,anim in enumerate(animations):
             anim.start_offset = i * lag_ratio * group_duration
@@ -122,12 +167,24 @@ class Parallel:
         for animation in self.animations:
             t  = animation.tick(elapsed_time)
             if animation.done:
+                animation._finish()
                 finished.append(animation)  
         for finished_animation in finished:
             self.animations.remove(finished_animation)
         if self.is_empty():
+            self._finish()
             self.done = True
-        
+
+    def __repr__(self) -> str:
+        """Short debug view: <Parallel n=X lag=Y duration=Zs children=[A,B,...]>"""
+        names = [getattr(a, "__class__", type(a)).__name__ for a in self.animations]
+        if len(names) > 3:
+            names = names[:3] + ["..."]
+        return (
+            f"<Parallel n={len(self.animations)} lag={self.lag_ratio:.2f} "
+            f"duration={getattr(self, 'duration', 0.0):.2f}s children={names}>"
+        )
+
         
 class MoveTo(Animation):
     def __init__(self,target:VisualElementNode|VisualStructureNode,pos:tuple,**kwargs):
@@ -155,16 +212,11 @@ class MoveTo(Animation):
         self._start_pos = None
     def _apply(self,t:float):
         if self._start_pos is None:
-            # p = self.target.transform.translate
-            p = self.target.pos
+            p = self.target.transform.translate
+            # p = self.target.pos
             if p is None:
                 p = (0,0)
             self._start_pos = tuple(p)
-        # if isinstance(self.target,VisualElementNode):
-        #     for element,offset in self.target.compute_layout_offset():
-        #         x = self._start_pos[0] + ((self.pos[0] + offset[0]) - self._start_pos[0]) * t
-        #         y = self._start_pos[1] + ((self.pos[1] + offset[1]) - self._start_pos[1]) * t
-        #         element.transform.translate = (x,y)
         x = self._start_pos[0] + (self.pos[0] - self._start_pos[0]) * t
         y = self._start_pos[1] + (self.pos[1] - self._start_pos[1]) * t
         self.target.transform.translate = (x,y)
