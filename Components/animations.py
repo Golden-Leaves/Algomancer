@@ -34,7 +34,7 @@ class Animation(ABC):
         _start_offset : float
             The start offset of the animation in seconds.
         """
-        self.duration = duration
+        self.duration = max(1e-6,max(0.0,duration))
         self.target = target
         self._start_time = None
         self.start_offset = start_offset
@@ -130,6 +130,7 @@ class Sequence:
         If no animations exist, sets done to True
         """
         animation = self.get_current_animation()
+        if isinstance(animation,Deferred):self.animations[0] = animation = animation.build()
         t = animation.tick(elapsed_time)
         if animation.done:
             animation._finish()
@@ -164,7 +165,9 @@ class Parallel:
         return len(self.animations) == 0
     def tick(self,elapsed_time:float) -> None:
         finished = []
-        for animation in self.animations:
+        for i in range(len(self.animations)):
+            animation = self.animations[i]
+            if isinstance(animation,Deferred):self.animations[i] = animation = animation.build()
             t  = animation.tick(elapsed_time)
             if animation.done:
                 animation._finish()
@@ -184,7 +187,11 @@ class Parallel:
             f"<Parallel n={len(self.animations)} lag={self.lag_ratio:.2f} "
             f"duration={getattr(self, 'duration', 0.0):.2f}s children={names}>"
         )
-
+class Deferred:
+    def __init__(self, builder: Callable, **kwargs) -> None:
+        self.builder = builder
+    def build(self) -> Animation|Sequence|Parallel:
+        return self.builder()
         
 class MoveTo(Animation):
     def __init__(self,target:VisualElementNode|VisualStructureNode,pos:tuple,**kwargs):
