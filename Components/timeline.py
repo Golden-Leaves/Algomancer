@@ -1,5 +1,6 @@
 import time
-from Components.animations import Animation
+from Components.animations import Animation,Parallel,Sequence
+from collections import deque
 class Timeline:
     def __init__(self):
         """
@@ -16,20 +17,28 @@ class Timeline:
             The total elapsed time in seconds since the Timeline was initialized.
         """
         from Components.animations import Sequence
-        self.active: list[Animation|Sequence] = []
+        from Components.logging import DebugLogger
+        self.active: deque[Animation|Sequence] = deque()
         self.elapsed_time:float = 0.0
+        self.logger = DebugLogger(f"{self.__class__.__name__}",output=True)
         
-    def add_animation(self,animation:Animation):
+    def add_track(self,track:Animation):
         """
-        Adds an animation to the timeline.
+        Adds a track to the timeline.
         
         Parameters
         ----------
-        animation : Animation
-            The animation to add to the timeline.
+        track : Animation
+            The track to add to the timeline.
         """
-        self.active.append(animation)   
+        self.active.append(track)   
+    
+    def get_current_track(self) -> Animation|Sequence|Parallel|None:
+        return self.active[0] if len(self.active) > 0 else None
         
+    def pop_current_track(self) -> Animation|Sequence|Parallel|None:
+        return self.active.popleft()
+    
     def update(self,dt:float):
         """
         Updates the timeline by the given delta time.
@@ -43,16 +52,13 @@ class Timeline:
         -------
         None
         """
-        from Components.animations import Sequence
         self.elapsed_time += dt
-        finished = []
-        
-        for track in self.active:                        
-            t:float = track.tick(elapsed_time=self.elapsed_time)
-            if track.done:
-                finished.append(track)
+        track = self.get_current_track()       
+        t:float = track.tick(elapsed_time=self.elapsed_time)
+        if track.done:
+            self.pop_current_track()
+            
                 
-        for finished_animation in finished:
-            self.active.remove(finished_animation)
+        
             
             

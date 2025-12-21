@@ -1,36 +1,41 @@
-from Structures.base import VisualElementNode
+from __future__ import annotations
+from Structures.base import VisualElementNode,VisualStructureNode
 from abc import ABC,abstractmethod
-from vispy.visuals.transforms import STTransform
 from vispy.visuals.filters import Alpha
 from Components.constants import *
 from Components.logging import DebugLogger
+from collections import deque
 #Add apply_on_children() to apply effect on all children when we implement VisualStructureNode
 class Animation(ABC):
-    def __init__(self,target:VisualElementNode,duration:float=1.0,start_offset:float=0.0,**kwargs):
+    def __init__(self, target: VisualElementNode|VisualStructureNode, duration: float = 1.0, start_offset: float = 0.0, **kwargs):
         """
         Initializes an Animation with the given target and duration.
 
         Parameters
         ----------
-        target : VisualElementNode
+        target : VisualElementNode|VisualStructureNode
             The target of the animation.
         duration : float, optional
             The duration of the animation in seconds. Defaults to 1.0.
+        start_offset : float, optional
+            The start offset of the animation in seconds. Defaults to 0.0.
         **kwargs
             Optional keyword arguments to pass to the subclass constructor.
 
         Attributes
         ----------
-        duration : float
+        _duration : float
             The duration of the animation in seconds.
-        target : VisualElementNode
+        _target : VisualElementNode|VisualStructureNode
             The target of the animation.
         _start_time : float
             The start time of the animation in seconds from the scene's elapsed time.
+        _start_offset : float
+            The start offset of the animation in seconds.
         """
-        self.duration = float(duration) 
+        self.duration = duration
         self.target = target
-        self._start_time:float = None
+        self._start_time = None
         self.start_offset = start_offset
         self.done = False
 
@@ -76,11 +81,12 @@ class Sequence:
         logger : DebugLogger
             A logger for debugging purposes.
         """
-        self.animations = list(animations)
+        self.animations = deque(list(animations))
         self.done = False  
         self.logger = DebugLogger(f"{self.__class__.__name__}",output=True)  
+        self.duration = sum([animation.duration for animation in self.animations]) if self.animations else 0.0 
     def remove_current_animation(self) -> None:
-         self.animations.pop(0)
+         self.animations.popleft()
     def is_empty(self) -> bool:
         return len(self.animations) == 0
     def get_current_animation(self) -> Animation:
@@ -104,6 +110,8 @@ class Parallel:
         #Basically a scale
         self.group_duration = max([animation.duration for animation in self.animations]) #Group lasts as long as the longest animation
         self.compute_start_offsets(animations=animations,lag_ratio=lag_ratio,group_duration=self.group_duration)
+        self.duration = max([(animation.duration + animation.start_offset) for animation in self.animations]) if self.animations else 0.0
+        #max(start_offset + duration)
     def compute_start_offsets(self,animations:list[Animation],lag_ratio:float,group_duration:float) -> None:
         for i,anim in enumerate(animations):
             anim.start_offset = i * lag_ratio * group_duration
@@ -122,13 +130,13 @@ class Parallel:
         
         
 class MoveTo(Animation):
-    def __init__(self,target:VisualElementNode,pos:tuple,**kwargs):
+    def __init__(self,target:VisualElementNode|VisualStructureNode,pos:tuple,**kwargs):
         """
         Initializes a MoveTo with the given target and end position.
 
         Parameters
         ----------
-        target : VisualElementNode
+        target : VisualElementNode|VisualStructureNode
             The target of the animation.
         pos : tuple
             The end position of the animation.
@@ -147,10 +155,16 @@ class MoveTo(Animation):
         self._start_pos = None
     def _apply(self,t:float):
         if self._start_pos is None:
-            p = self.target.transform.translate
+            # p = self.target.transform.translate
+            p = self.target.pos
             if p is None:
                 p = (0,0)
             self._start_pos = tuple(p)
+        # if isinstance(self.target,VisualElementNode):
+        #     for element,offset in self.target.compute_layout_offset():
+        #         x = self._start_pos[0] + ((self.pos[0] + offset[0]) - self._start_pos[0]) * t
+        #         y = self._start_pos[1] + ((self.pos[1] + offset[1]) - self._start_pos[1]) * t
+        #         element.transform.translate = (x,y)
         x = self._start_pos[0] + (self.pos[0] - self._start_pos[0]) * t
         y = self._start_pos[1] + (self.pos[1] - self._start_pos[1]) * t
         self.target.transform.translate = (x,y)
@@ -163,13 +177,13 @@ class Wait(Animation):
      
 class FadeIn(Animation):
     
-    def __init__(self, target: VisualElementNode, **kwargs) -> None:
+    def __init__(self, target: VisualElementNode|VisualStructureNode, **kwargs) -> None:
         """
         Initializes a FadeIn with the given target.
 
         Parameters
         ----------
-        target : VisualElementNode
+        target : VisualElementNode|VisualStructureNode
             The target of the animation.
 
         Returns
@@ -187,13 +201,13 @@ class FadeIn(Animation):
         self.target._alpha_filter.alpha = self.alpha * t
 
 class FadeOut(Animation):
-    def __init__(self, target: VisualElementNode, **kwargs) -> None:
+    def __init__(self, target: VisualElementNode|VisualStructureNode, **kwargs) -> None:
         """
         Initializes a FadeOut with the given target.
         
         Parameters
         ----------
-        target : VisualElementNode
+        target : VisualElementNode|VisualStructureNode
             The target of the animation.
 
         Returns
@@ -211,7 +225,7 @@ class FadeOut(Animation):
         self.target._alpha_filter.alpha = self.alpha * (1-t)
         
 class Scale(Animation):
-    def __init__(self, target:VisualElementNode, scale:float=1.0, **kwargs):
+    def __init__(self, target:VisualElementNode|VisualStructureNode, scale:float=1.0, **kwargs):
         super().__init__(target,**kwargs)
         self.scale = float(scale)
         self._start_scale = None
@@ -227,7 +241,7 @@ class Scale(Animation):
         self.target.transform.scale = (sx,sy)
     
 class Highlight(Animation): #Update this to keep start_color as well
-    def __init__(self, target:VisualElementNode,color=YELLOW,**kwargs):
+    def __init__(self, target:VisualElementNode|VisualStructureNode,color=YELLOW,**kwargs):
         from Components.utils import normalize_color
         super().__init__(target, **kwargs)
         self.color = normalize_color(color)
