@@ -40,6 +40,7 @@ class Animation(ABC):
         self.start_offset = start_offset
         self.done = False
         self._on_finish: list[Callable] = []
+        self.logger = DebugLogger(f"{self.__class__.__name__}",output=True)   
     def add_on_finish(self,callback) -> Animation:
         """
         Registers a callback to call when the animation is finished.
@@ -61,6 +62,7 @@ class Animation(ABC):
             return
         self.done = True
         for callback in self._on_finish:
+            self.logger.debug("Current callback: %s",callback)
             callback()
     def __repr__(self) -> str:
         cls = self.__class__.__name__
@@ -236,7 +238,7 @@ class Wait(Animation):
      
 class FadeIn(Animation):
     
-    def __init__(self, target: VisualElementNode|VisualStructureNode, **kwargs) -> None:
+    def __init__(self, target: VisualElementNode|VisualStructureNode,alpha:float=None, **kwargs) -> None:
         """
         Initializes a FadeIn with the given target.
 
@@ -255,12 +257,12 @@ class FadeIn(Animation):
             target.body.attach(a)
             if hasattr(target,"text"): target.text.attach(a)
             target._alpha_filter = a
-        self.alpha: float = target._alpha_filter.alpha
+        self.alpha: float = target._alpha_filter.alpha if alpha is None else alpha
     def _apply(self,t:float):
         self.target._alpha_filter.alpha = self.alpha * t
 
 class FadeOut(Animation):
-    def __init__(self, target: VisualElementNode|VisualStructureNode, **kwargs) -> None:
+    def __init__(self, target: VisualElementNode|VisualStructureNode,alpha:float=None, **kwargs) -> None:
         """
         Initializes a FadeOut with the given target.
         
@@ -279,7 +281,7 @@ class FadeOut(Animation):
             target.body.attach(a)
             if hasattr(target,"text"): target.text.attach(a)
             target._alpha_filter = a
-        self.alpha = target._alpha_filter.alpha
+        self.alpha = target._alpha_filter.alpha if alpha is None else alpha
     def _apply(self,t:float):
         self.target._alpha_filter.alpha = self.alpha * (1-t)
         
