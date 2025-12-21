@@ -86,6 +86,7 @@ class VisualElementNode(scene.Node):
         from Components.utils import get_operation
         if hasattr(other,"value"): other = other.value
         operation = get_operation(operation)
+        self.logger.debug("Evaluating %s %s %s",self.value,operation,other)
         if not reversed:
             result = operation(self.value,other)
         else:
@@ -96,67 +97,67 @@ class VisualElementNode(scene.Node):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__add__(other)
-        self.evaluate_operation(operation="+",other=other)
+        return self.evaluate_operation(operation="+",other=other)
     def __sub__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__sub__(other)
-        self.evaluate_operation(operation="-",other=other)
+        return self.evaluate_operation(operation="-",other=other)
     def __mul__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__mul__(other)
-        self.evaluate_operation(operation="*",other=other)
+        return self.evaluate_operation(operation="*",other=other)
     def __truediv__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__truediv__(other)
-        self.evaluate_operation(operation="/",other=other)
+        return self.evaluate_operation(operation="/",other=other)
     
     def __floordiv__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__floordiv__(other)
-        self.evaluate_operation(operation="//",other=other)
+        return self.evaluate_operation(operation="//",other=other)
         
     def __mod__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__mod__(other)
-        self.evaluate_operation(operation="%",other=other)
+        return self.evaluate_operation(operation="%",other=other)
         
     def __radd__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__radd__(other)
-        self.evaluate_operation(operation="+",other=other,reversed=True)
+        return self.evaluate_operation(operation="+",other=other,reversed=True)
     def __rsub__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__rsub__(other)
-        self.evaluate_operation(operation="-",other=other,reversed=True)
+        return self.evaluate_operation(operation="-",other=other,reversed=True)
     def __rmul__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__rmul__(other)
-        self.evaluate_operation(operation="*",other=other,reversed=True)
+        return self.evaluate_operation(operation="*",other=other,reversed=True)
     def __rtruediv__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__rtruediv__(other)
-        self.evaluate_operation(operation="/",other=other,reversed=True)
+        return self.evaluate_operation(operation="/",other=other,reversed=True)
         
     def __rfloordiv__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__rfloordiv__(other)
-        self.evaluate_operation(operation="//",other=other,reversed=True)
+        return self.evaluate_operation(operation="//",other=other,reversed=True)
         
     def __rmod__(self, other):
         tracer = get_tracer()
         if tracer and not tracer.enabled:
             return super().__rmod__(other)
-        self.evaluate_operation(operation="%",other=other,reversed=True)
+        return self.evaluate_operation(operation="%",other=other,reversed=True)
         
     def compare_values(self,operation:str,other:Any, reversed:bool=False):
         """
@@ -179,47 +180,48 @@ class VisualElementNode(scene.Node):
         from Components.animations import Indicate,Parallel
         result = self.evaluate_operation(operation=operation,other=other,reversed=reversed)
         tracer = get_tracer()
-        if isinstance(other,VisualElementNode):
-            
-            color = GREEN if result else RED
-            animation = Parallel(Indicate(self,color=color),Indicate(other,color=color))
-            tracer.record_animation(animation=animation)
+        
+        if tracer and tracer.enabled and isinstance(other,VisualElementNode):
+                color = GREEN if result else RED
+                self.logger.debug("Comparing %s %s %s",self,operation,other)
+                animation = Parallel(Indicate(self,color=color),Indicate(other,color=color))
+                tracer.record_animation(animation=animation)
         return result
     
     def __lt__(self, other):
         tracer = get_tracer()
-        if tracer and not tracer.enabled:
-            return super().__lq__(other)
-        return self.compare_values(operation="<",other=other)
-    def _gt__(self, other):
+        if tracer and tracer.enabled:
+            return self.compare_values(operation="<", other=other)
+        return self.evaluate_operation(operation="<", other=other)
+    def __gt__(self, other):
         tracer = get_tracer()
-        if tracer and not tracer.enabled:
-            return super().__gt__(other)
-        return self.compare_values(operation=">",other=other)
+        if tracer and tracer.enabled:
+            return self.compare_values(operation=">", other=other)
+        return self.evaluate_operation(operation=">", other=other)
     def __le__(self, other):
         tracer = get_tracer()
-        if tracer and not tracer.enabled:
-            return super().__le__(other)
-        return self.compare_values(operation="<=",other=other)
+        if tracer and tracer.enabled:
+            return self.compare_values(operation="<=", other=other)
+        return self.evaluate_operation(operation="<=", other=other)
     def __ge__(self, other):
         tracer = get_tracer()
-        if tracer and not tracer.enabled:
-            return super().__ge__(other)
-        return self.compare_values(operation=">=",other=other)
+        if tracer and tracer.enabled:
+            return self.compare_values(operation=">=", other=other)
+        return self.evaluate_operation(operation=">=", other=other)
     def __eq__(self, other):
         if self is other:
             return True
         tracer = get_tracer()
-        if tracer and not tracer.enabled:
-            return super().__eq__(other)
-        return self.compare_values(operation="==",other=other)
+        if tracer and tracer.enabled:
+            return self.compare_values(operation="==", other=other)
+        return self.evaluate_operation(operation="==", other=other)
     def __ne__(self, other):
-        if self is other: #This is here to prevent vispy's internals from exploding the program
+        if self is other:
             return False
         tracer = get_tracer()
-        if tracer and not tracer.enabled:
-            return super().__ne__(other)
-        return self.compare_values(operation="!=",other=other)
+        if tracer and tracer.enabled:
+            return self.compare_values(operation="!=", other=other)
+        return self.evaluate_operation(operation="!=", other=other)
     
 
 
@@ -241,21 +243,23 @@ class VisualStructureNode(scene.Node):
         self.text_color = text_color
         self.text_size = text_size
         self.body_color = self._base_color = normalize_color(body_color)
-    
+        self.elements:list[VisualElementNode] = []    
     @property
     def pos(self):
         import numpy as np
         return np.array(self.transform.map((0, 0)), dtype=float)
     
-    def get_elements(self):
-        from Structures.base import VisualElementNode
-        return [element for element in self.children if isinstance(element,VisualElementNode)]
     def get_element(self, index:int):
         from Structures.base import VisualElementNode
-        return [element for element in self.children if isinstance(element,VisualElementNode)][index]
+        if isinstance(index,VisualElementNode):
+            return index
+        return self.elements[index]
+    
     def get_index(self, element:VisualElementNode):
-        from Structures.base import VisualElementNode
-        return [element for element in self.children if isinstance(element,VisualElementNode)].index(element)
+        if isinstance(element,int):
+            return element
+        return [i for i,e in enumerate(self.elements) if e is element][0]
+    
     def compute_layout_offset(self) -> dict[VisualElementNode, tuple[float, float]]:
         """
         Computes the offset of each element in the layout from the center of the structure.
